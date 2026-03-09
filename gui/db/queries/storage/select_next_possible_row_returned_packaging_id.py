@@ -1,0 +1,30 @@
+from sqlalchemy import select, desc
+
+from db.async_query_base.async_query_base import AsyncQueryBase
+from db.tables import example_db
+
+class select_next_possible_row_returned_packaging_id(AsyncQueryBase):
+
+    async def query(self) -> int:
+        
+        query_result = await self.session.execute(
+            select(
+                
+                example_db.returnable_packaging.id
+                
+            ).order_by(
+                
+                desc(example_db.returnable_packaging.id)
+                
+            ).limit(1)
+        )
+
+        result = query_result.scalars().first()
+        
+        if result is None:
+            
+            return 1
+        
+        else:
+            
+            return result + 1

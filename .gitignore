@@ -1,0 +1,16 @@
+.venv/*
+.venv
+*.log
+test/
+config.py
+__pycache__/
+exports
+exports/*
+playwright
+qr_codes
+dist
+build
+build/*
+dist/*
+quotations
+quotations/*

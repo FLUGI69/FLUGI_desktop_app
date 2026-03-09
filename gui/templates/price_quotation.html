@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+        :root {
+            --font-family: 'Inter', sans-serif;
+            --primary-color: #1f2e61;
+            --secondary-color: #f4f4f4;
+            --text-color: #3e3e3e;
+            --border-color: #dddddd;
+            --page-margin: 15mm;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: A4;
+            margin: 12mm 12mm 15mm 12mm;
+        }
+
+        html,
+        body {
+            position: relative;
+            width: auto;
+            height: auto;
+            margin: 0;
+            padding: 0;
+            background: white;
+            overflow: visible;
+            font-family: var(--font-family);
+            font-size: 10pt;
+            line-height: 1.4;
+            color: var(--text-color);
+        }
+
+        .content {
+            width: 100%;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        .quotation-header {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 80px;
+            page-break-after: avoid;
+        }
+
+        .quotation-header svg {
+            width: 200px;
+            height: auto;
+        }
+
+        .quotation-header h1 {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            width: 100%;
+        }
+
+        .quotation-header h1 {
+            font-size: 30pt;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .quotation-header h2 {
+            font-size: 14pt;
+            font-weight: normal;
+            color: var(--text-color);
+            top: 55px;
+        }
+
+        .quotation-header > div p {
+            margin: 2px 0;
+            color: var(--primary-color);
+        }
+
+        .quotation-header > div {
+            font-size: 9pt;
+            line-height: 1.3;
+            text-align: right;
+        }
+
+        .client-header {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .client-header .left-col,
+        .client-header .right-col {
+            width: 48%;
+        }
+
+        .client-header .left-col h3 {
+            margin-top: 10px;
+        }
+
+        .client-header .left-col div {
+            font-weight: bold;
+        }
+
+        .client-header .left-col div span {
+            font-weight: normal;
+        }
+
+        .client-header .right-col {
+            text-align: right;
+        }
+
+        .client-header .right-col p {
+            margin: 2px 0;
+        }
+
+        .client-header h3 {
+            margin: 0 0 2px 0;
+            font-size: 12pt;
+            font-weight: bold;
+        }
+
+        .devider {
+            height: 2px;
+            background-color: var(--primary-color);
+            margin: 20px 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            page-break-inside: auto;
+        }
+
+        tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+        }
+
+        table th,
+        table td {
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        table th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        table th:nth-child(1) {
+            width: 50%;
+        }
+
+        table th:nth-child(2) {
+            width: 12.5%;
+        }
+
+        table th:nth-child(3) {
+            width: 12.5%;
+        }
+
+        table th:nth-child(4) {
+            width: 25%;
+        }
+
+        table td:nth-child(1) {
+            text-align: left;
+        }
+
+        table td:nth-child(2) {
+            text-align: center;
+        }
+
+        table td:nth-child(3) {
+            text-align: center;
+        }
+
+        table td:nth-child(4) {
+            text-align: right;
+        }
+
+        .total-row td {
+            font-weight: bold;
+        }
+
+        .total-row td:first-child {
+            border: none;
+        }
+
+        .total-row td:nth-child(2),
+        .total-row td:last-child {
+            background-color: var(--secondary-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .total-row td:nth-child(2) {
+            text-align: right;
+            padding-right: 10px;
+        }
+
+        .total-row td:last-child {
+            text-align: right;
+        }
+
+        .project-description,
+        .other-information {
+            text-align: justify;
+            margin-top: 20px;
+        }
+        
+        .other-information+h3 {
+            font-size: 10pt;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .other-pricing-list.less-than-six {
+            float: left;
+            width: 100%;
+            list-style-type: none;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            margin-top: 0;
+            font-size: 9pt;
+        }
+
+        .other-pricing-list.greater-than-six {
+            float: left;
+            width: 70%;
+            list-style-type: none;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            margin-top: 0;
+            font-size: 9pt;
+        }
+
+        .other-pricing-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: none;
+        }
+
+        .other-pricing-list li .label {
+            padding-right: 15px;
+        }
+
+        .other-pricing-list li .value {
+            width: auto;     
+            text-align: right;
+            white-space: nowrap; 
+        }
+
+        .credithworthiness.greater-than-six,
+        .credithworthiness.less-than-six { 
+            color: #000000;
+            text-align: center;
+        }
+
+        .credithworthiness.greater-than-six h3,
+        .credithworthiness.less-than-six h3 {
+            font-size: 9pt;
+            margin: 3px 0;
+            padding-bottom: 2px;
+        }
+
+        .credithworthiness.less-than-six,
+        .credithworthiness.greater-than-six {
+            float: none;
+            width: 100%;
+            margin-top: 50px;
+        }
+
+        .credithworthiness .logo {
+            width: 160px;
+            margin: 0 auto;
+        }
+
+        .credithworthiness p {
+            font-size: 8pt;
+            margin: 1px 0;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div class="content">
+    </div>
+    <div class="quotation-header">
+        <div class="cts-logo">
+            <img src="data:image/svg+xml;base64,{{ cts_logo }}" alt="CTS Logo" style="width:200px; height:auto;">
+        </div>
+        <h1>{{ _("Quotation") }}</h1>
+        <div>
+            <p>EXAMPLE COMPANY Ltd.</p>
+            <p>1234 CITY EXAMPLE STREET 11.</p>
+            <p>132456465-212-456</p>
+            <p>INFO@EXAMPLE.COM</p>
+        </div>
+    </div>
+    <div class="client-header">
+        <div class="left-col">
+            <div>{{ _("Date") }}, {{ current_date }}</div>
+            <div>{{ _("Valid Until") }}, {{ valid_until_date }}</div>
+            <h3>{{ boat_name }}</h2>
+            <div>{{ _("Order:") }} #{{ order_number }}</div>
+        </div>
+        <div class="right-col">
+            <div>
+                <h3>{{ client.name }}</h3>
+                <p>{{ client.address }}</p>
+                <p>{{ client.country }}</p>
+                <p>{{ client.vat }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="devider"></div>
+    <div class="project-description">
+        <strong>{{ _("PROJECT DESCRIPTION:") }} </strong> {{ description }}
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>{{ _("Name") }}</th>
+                <th>{{ _("Quantity") }}</th>
+                <th>{{ _("Unit") }}</th>
+                <th>{{ _("Price") }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for i in range(1, max_rows+1) %}
+                {% if i <= data|length %} 
+                <tr>
+                    <td>{{ data[i-1].name }}</td>
+                    <td>{{ data[i-1].qty }}</td>
+                    <td>{{ data[i-1].unit }}</td>
+                    <td>{{ data[i-1].price }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                <tr class="total-row">
+                    <td></td>
+                    <td colspan="2"><strong>{{ _("Total") }}</strong></td>
+                    <td><strong>€ {{ total_price }}</strong></td>
+                </tr>
+        </tbody>
+    </table>
+    <div class="devider"></div>
+    <div class="other-information">
+        <strong>{{ _("OTHER INFORMATION:") }} </strong> {{ information }}
+    </div>
+    <h3>{{ _("THIS QUOTATION DOES NOT INCLUDE THE FOLLOWING ITEMS") }}</h3>
+    <ul class="other-pricing-list {{ data_lenght }}">
+        <li>
+            <span class="label">{{ _("Work during working hours:") }}</span>
+            <span class="value {{ data_lenght }}">€80 {{ _("/ person / hour") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Outside working hours & Saturdays:") }}</span>
+            <span class="value">€120{{ _("/ person / hour") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Sundays & public holidays +100%:") }}</span>
+            <span class="value">€160 {{ _("/ person / hour") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Travel within Budapest:") }}</span>
+            <span class="value">€65 {{ _("/ occasion") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Travel outside Budapest / abroad:") }}</span>
+            <span class="value">€1.2 {{ _("/ km") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Travel time:") }}</span>
+            <span class="value">€40 {{ _("/ person / hour") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Travel time outside working hours & Saturdays +50%:") }}</span>
+            <span class="value">€60 {{ _("/ person / hour") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Travel time Sundays & public holidays +100%:") }}</span>
+            <span class="value">€80 {{ _("/ person / hour") }}</span>
+        </li>
+        <li>
+            <span class="label">{{ _("Accommodation:") }}</span>
+            <span class="value">€100 {{ _("/ person / night") }}</span>
+        </li>
+    </ul>
+    <div class="credithworthiness {{ data_lenght }}">
+        <div class="logo">
+            <img src="data:image/svg+xml;base64,{{ cred_logo }}" alt="Credit Logo" style="width:160px; height:auto;">
+        </div>
+        <h3>EXAMPLE COMPANY Ltd.</h3>
+        <p>VAT: 132456465-212-456</p>
+        <p>D-U-N-S Number: 789465132</p>
+        <p>&copy; Dun & Bradstreet</p>
+        <p>{{ current_date }}</p>
+    </div>
+    </div>
+</body>
+
+</html>

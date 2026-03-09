@@ -1,0 +1,20 @@
+from enum import StrEnum 
+
+class StatusTypeEnum(StrEnum):
+    # System labels
+    INBOX = "INBOX"
+    STARRED = "STARRED"
+    UNREAD = "UNREAD"
+    IMPORTANT = "IMPORTANT"
+    SENT = "SENT"
+    DRAFT = "DRAFT"
+    TRASH = "TRASH"
+    SPAM = "SPAM"
+    CHAT = "CHAT"
+
+    # Category labels
+    CATEGORY_PERSONAL = "CATEGORY_PERSONAL"
+    CATEGORY_SOCIAL = "CATEGORY_SOCIAL"
+    CATEGORY_PROMOTIONS = "CATEGORY_PROMOTIONS"
+    CATEGORY_UPDATES = "CATEGORY_UPDATES"
+    CATEGORY_FORUMS = "CATEGORY_FORUMS"
