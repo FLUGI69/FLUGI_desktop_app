@@ -1,4 +1,10 @@
+<div align="center">
+
 # FLUGI Desktop App
+
+Desktop application for managing boat works and attachments.
+
+</div>
 
 <div align="center">
 	<h3>Portfolio Reference Project</h3>
