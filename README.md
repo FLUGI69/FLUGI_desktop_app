@@ -59,7 +59,6 @@ This repository is used as a **portfolio project reference**, showing a full-sta
 - **SQLAlchemy-Utils** (0.41.2) — additional utilities for SQLAlchemy
 - **aiomysql** (0.2.0) — async MySQL driver
 - **PyMySQL** (1.1.1) — Pure Python MySQL client
-- **alembic** (1.16.1) — database migration tool
 
 ### Cache & Real-time Communication
 - **redis** (5.0.4) — Redis client
