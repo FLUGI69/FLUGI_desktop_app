@@ -192,6 +192,10 @@ class TodoView(QWidget, LoggerMixin):
             if next_leave_date:
                 
                 now = datetime.now(Config.time.timezone_utc)
+                
+                if next_leave_date.tzinfo is None:
+                    
+                    next_leave_date = next_leave_date.replace(tzinfo = Config.time.timezone_utc)
           
                 time_diff = (next_leave_date - now).total_seconds() * 1000  # ms
           
@@ -475,6 +479,10 @@ class TodoView(QWidget, LoggerMixin):
         if next_arrival is not None:
             
             now = datetime.now(Config.time.timezone_utc)
+
+            if next_arrival.tzinfo is None:
+                
+                next_arrival = next_arrival.replace(tzinfo = Config.time.timezone_utc)
             
             time_diff = (next_arrival - now).total_seconds() * 1000  # ms
             

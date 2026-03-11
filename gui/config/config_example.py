@@ -355,6 +355,69 @@ class Config(object):
                 margin-top: 10px;
             }
         """
+        input_dialog = """
+            QInputDialog {
+                background-color: #0a0a0a;
+                border-radius: 8px;
+                padding: 15px;
+            }
+            QLabel {
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QSpinBox {
+                background: qradialgradient(
+                    cx:0.5, cy:0.5,
+                    fx:0.5, fy:0.5, 
+                    radius:1, 
+                    stop:0 #6e6e6e, 
+                    stop:1 #3e3e3e
+                );
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 4px 8px;
+                font-size: 16px;
+                height: 40px;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                width: 20px;
+                border: none;
+                border-radius: 4px;
+                background-color: #5a5a5a;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #7a7a7a;
+            }
+            QSpinBox::up-arrow {
+                image: url("gui/config/icons/arrow-up.svg");
+                width: 20px;
+                height: 20px;
+            }
+            QSpinBox::down-arrow {
+                image: url("gui/config/icons/arrow-down.svg");
+                width: 20px;
+                height: 20px;
+            }
+            QPushButton {
+                background-color: #5a5a5a;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 6px 12px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 80px;
+                min-height: 30px;
+            }
+            QPushButton:hover {
+                background-color: #7a7a7a;
+            }
+            QPushButton:pressed {
+                background-color: #9a9a9a;
+            }
+        """
         
     class html_setup:
         

@@ -17,7 +17,9 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QSizePolicy
 )
-from PyQt6.QtGui import QPixmap, QPalette, QColor, QFont
+from PyQt6.QtGui import QPixmap, QPalette, QColor, QFont, QImage, QPainter
+from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtCore import QSize as _QSize
 
 from utils.logger import LoggerMixin
 from routes.api.google.exceptions import (
@@ -83,7 +85,7 @@ class GmailLoginWindow(QWidget, LoggerMixin):
     def __init_view(self):
         
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(Qt.GlobalColor.black))
+        palette.setColor(QPalette.ColorRole.Window, QColor("#424242"))
         
         self.setPalette(palette)
         
@@ -96,13 +98,27 @@ class GmailLoginWindow(QWidget, LoggerMixin):
             
             logo_label = QLabel()
             
-            pixmap = QPixmap(str(self.logo_path))
+            renderer = QSvgRenderer(str(self.logo_path))
             
-            scaled_pixmap = pixmap.scaledToWidth(
-                200, Qt.TransformationMode.SmoothTransformation
-            )
+            if renderer.isValid():
+                
+                default_size = renderer.defaultSize()
+                
+                scale = 400 / default_size.width()
+                
+                target = _QSize(400, int(default_size.height() * scale))
+                
+                image = QImage(target, QImage.Format.Format_ARGB32_Premultiplied)
+                image.fill(0)
+                
+                painter = QPainter(image)
+                
+                renderer.render(painter)
+                
+                painter.end()
+                
+                logo_label.setPixmap(QPixmap.fromImage(image))
             
-            logo_label.setPixmap(scaled_pixmap)
             logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
             layout.addWidget(logo_label)
@@ -110,7 +126,7 @@ class GmailLoginWindow(QWidget, LoggerMixin):
             layout.addSpacing(20)
 
         # Title
-        title = QLabel("Sign in with your Google account")
+        title = QLabel("Sign in with your Google account.")
         title.setObjectName("GoogleAuthTitle")
         title.setMinimumWidth(300) 
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -146,7 +162,7 @@ class GmailLoginWindow(QWidget, LoggerMixin):
             button_layout.addWidget(icon_label)
 
         # Text label
-        text_label = QLabel("Login")
+        text_label = QLabel("Sign in")
         text_label.setObjectName("Googlebtntext")
         text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         text_label.setContentsMargins(0, 0, 0, 0)
@@ -166,7 +182,7 @@ class GmailLoginWindow(QWidget, LoggerMixin):
         layout.addWidget(self.button_container, alignment = Qt.AlignmentFlag.AlignCenter)
 
         self.setLayout(layout)
-
+        
     @asyncSlot()
     async def __handle_login(self) -> None:
         

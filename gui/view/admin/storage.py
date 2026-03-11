@@ -16,12 +16,14 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QStackedWidget,
     QPushButton,
-    QLabel
+    QLabel,
+    QInputDialog
 )
 from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QSize, QTimer
 
 from weasyprint import HTML
+import pandas as pd
 
 from utils.logger import LoggerMixin
 from services.admin.storage_dropdown_cache import StorageCacheService
@@ -196,10 +198,20 @@ class AdminStorageContent(QWidget, LoggerMixin):
         self.print_btn.setIconSize(QSize(25, 25))
         self.print_btn.clicked.connect(self.__print_table)
         
+        self.download_btn = QPushButton()
+        self.download_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.download_btn.setFixedHeight(50)
+        self.download_btn.setObjectName("TrashButton")
+        self.download_btn.setToolTip("Letöltés Excel")
+        self.download_btn.setIcon(AdminStorageContent.icon("download.svg"))
+        self.download_btn.setIconSize(QSize(25, 25))
+        self.download_btn.clicked.connect(self.__download_excel)
+        
         search_layout = QHBoxLayout()
         search_layout.addWidget(self.search_input, 1)
         search_layout.addWidget(self.dropdown_select_storage, 1)
         search_layout.addWidget(self.print_btn)
+        search_layout.addWidget(self.download_btn)
 
         right_panel.addLayout(search_layout)
 
@@ -243,6 +255,76 @@ class AdminStorageContent(QWidget, LoggerMixin):
             HTML(string = html_content).write_pdf(pdf_file)
             
             QDesktopServices.openUrl(QUrl.fromLocalFile(pdf_file))
+
+    def __download_excel(self):
+        
+        if self.storage_datatable_data is None or not hasattr(self.storage_datatable_data, "items"):
+            return
+
+        current_year = datetime.now(Config.time.timezone_utc).year
+        
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Év kiválasztása")
+        dialog.setInputMode(QInputDialog.InputMode.IntInput)
+        dialog.setIntRange(2000, 2100)
+        dialog.setIntValue(current_year)
+        dialog.setStyleSheet(Config.styleSheets.input_dialog)
+        
+        accepted = dialog.exec()
+        year = dialog.intValue()
+
+        if accepted:
+                
+            filtered_items = []
+            
+            for item in self.storage_datatable_data.items:
+                
+                purchase_date = getattr(item, "purchase_date", None)
+                
+                if purchase_date is not None and hasattr(purchase_date, "year") and purchase_date.year == year:
+                    
+                    filtered_items.append(item)
+            
+            if len(filtered_items) == 0:
+                return
+
+            rows = []
+            
+            for idx, item in enumerate(filtered_items):
+                
+                price_value = getattr(item, "price", None)
+                
+                formatted_price = "{:,.0f}".format(price_value).replace(",", ".") if price_value is not None else "N/A"
+                
+                rows.append({
+                    "#": idx,
+                    "Megnevezés": self.datatable_helper.getAttribute(item, "name"),
+                    "Gyáriszám": self.datatable_helper.getAttribute(item, "manufacture_number"),
+                    "Mennyiség": str(self.datatable_helper.getAttribute(item, "quantity")),
+                    "Gyártási év": self.datatable_helper.getAttributeDate(item, "manufacture_date"),
+                    "Ár": formatted_price,
+                    "Üzembe helyezés időpontja": self.datatable_helper.getAttributeDate(item, "commissioning_date"),
+                    "Beszerzés forrása": self.datatable_helper.getAttribute(item, "purchase_source"),
+                    "Beszerzés időpontja": self.datatable_helper.getAttributeDate(item, "purchase_date"),
+                    "Ellenőrző felülvizsgálatok időpontja": self.datatable_helper.getAttributeDate(item, "inspection_date"),
+                    "Selejtezve": "Igen" if getattr(item, "is_scrap", False) is True else "Nem" if getattr(item, "is_scrap", False) is False else "N/A",
+                })
+            
+            df = pd.DataFrame(rows)
+            
+            export_dir = "exports"
+            
+            if os.path.exists(export_dir) == False:
+                
+                os.makedirs(export_dir)
+            
+            current_timestamp = datetime.now(Config.time.timezone_utc).strftime("%Y%m%d%H%M%S%f")
+            
+            xlsx_file = os.path.join(export_dir, f"konyveles_{current_timestamp}.xlsx")
+            
+            df.to_excel(xlsx_file, index = False)
+            
+            QDesktopServices.openUrl(QUrl.fromLocalFile(xlsx_file))
 
     def generate_html(self):
         

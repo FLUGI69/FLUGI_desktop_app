@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
     QLabel
 )
 from PyQt6.QtCore import Qt, QTimer, QTime, QDate, QSize
-from PyQt6.QtGui import QIcon, QPixmap, QPalette, QBrush, QResizeEvent, QColor
+from PyQt6.QtGui import QIcon, QPixmap, QPalette, QBrush, QResizeEvent, QColor, QImage, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 
 from config import Config
 from utils.logger import LoggerMixin
@@ -106,6 +107,8 @@ class MainWindow(QMainWindow, LoggerMixin):
         self.admin_view: AdminView | None = None
         
         self.storage_view: StorageView | None = None
+        
+        self._bg_pixmap = self.__render_svg_background()
         
         self.__apply_background()
         
@@ -320,31 +323,73 @@ class MainWindow(QMainWindow, LoggerMixin):
         self.main_layout.setSpacing(0)
         self.main_layout.addWidget(self.navbar)
         self.main_layout.addWidget(self.content_widget, stretch = 1)
+        
+    def __render_svg_background(self) -> QPixmap | None:
+
+        if self.PATH.exists() == False:
+            
+            return None
+
+        renderer = QSvgRenderer(str(self.PATH))
+
+        if renderer.isValid() == False:
+            
+            return None
+
+        target = renderer.defaultSize()
+        
+        if target.isEmpty():
+            
+            target = QSize(1920, 1080)
+        
+        else:
+            
+            scale = max(1920 / target.width(), 1080 / target.height())
+            
+            target = QSize(int(target.width() * scale), int(target.height() * scale))
+        
+        image = QImage(target, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(QColor("#424242"))
+        
+        painter = QPainter(image)
+        
+        renderer.render(painter)
+        
+        painter.end()
+
+        return QPixmap.fromImage(image)
 
     def __apply_background(self) -> None:
 
-        if self.PATH.exists():
+        if self._bg_pixmap is not None and not self._bg_pixmap.isNull():
 
-            pixmap = QPixmap(str(self.PATH))
+            scaled = self._bg_pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
 
-            if not pixmap.isNull():
+            bg = QPixmap(self.size())
+            bg.fill(QColor("#424242"))
+            
+            painter = QPainter(bg)
+            
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            
+            painter.drawPixmap(x, y, scaled)
+            painter.end()
 
-                scaled_pixmap = pixmap.scaled(
-                    self.size(),
-                    Qt.AspectRatioMode.IgnoreAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
+            palette = QPalette()
+            
+            palette.setBrush(QPalette.ColorRole.Window, QBrush(bg))
 
-                palette = QPalette()
-                
-                palette.setBrush(QPalette.ColorRole.Window, QBrush(scaled_pixmap))
+            self.setPalette(palette)
 
-                self.setPalette(palette)
-
-                self.setAutoFillBackground(True)
+            self.setAutoFillBackground(True)
             
         else:
-            # If there is no image
+  
             self.resize(420, 180)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -388,7 +433,7 @@ class MainWindow(QMainWindow, LoggerMixin):
         self.setAutoFillBackground(True)
 
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor(Qt.GlobalColor.black))
+        palette.setColor(QPalette.ColorRole.Window, QColor("#424242"))
         
         self.setPalette(palette)
         

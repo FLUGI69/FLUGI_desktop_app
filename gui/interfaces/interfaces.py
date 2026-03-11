@@ -4,6 +4,7 @@ import logging
 import re
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon
 
 from async_loop.qt_app import QtApplication
 from launcher import Launcher
@@ -96,7 +97,11 @@ class Interfaces(LoggerMixin):
         ), style)
 
         qt_app.app.setStyleSheet(style)
-            
+        
+        icon_path = base_path / "gui/static/assets/img/svg/cts_logo.svg"
+        
+        qt_app.app.setWindowIcon(QIcon(str(icon_path)))
+        
         return qt_app 
     
     @classmethod

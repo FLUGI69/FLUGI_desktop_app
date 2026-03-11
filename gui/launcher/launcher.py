@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 import requests
+import subprocess
 import zipfile
 import time
 import sys
@@ -10,6 +12,7 @@ import base64
 import logging
 import mimetypes
 import shutil
+import tempfile
 
 from view.launcher.launcher_window import LauncherWindow
 from config import Config
@@ -41,7 +44,7 @@ class Launcher(LoggerMixin):
         
         self.remote_update_zip_url = Config.launcher.remote_update_zip
         
-        self.app_zip_path = self.root_path.parent / "App.zip"
+        self.app_zip_path = self.root_path.parent / "example_app.zip"
         
         self.is_dev_mode = False if getattr(sys, "frozen", False) else True
         
@@ -116,31 +119,66 @@ class Launcher(LoggerMixin):
         
         return tuple(map(int, remote_version.split("."))) > tuple(map(int, local_version.split(".")))
 
-    def download_update(self):
+    def download_update(self, remote_version: str):
         
-        self.log.info("Downloading update from %s" % (self.remote_update_zip_url))
+        release_url = f"{self.remote_update_zip_url}/v{remote_version}"
+        
+        self.log.info("Fetching release info from %s" % release_url)
 
-        headers = {
+        api_headers = {
             "Authorization": f"Bearer {Config.launcher.access_token}",
-            "Accept": Config.launcher.accept_stream
+            "Accept": Config.launcher.accept_json
+        }
+
+        meta_response = requests.get(
+            url = release_url,
+            headers = api_headers,
+            timeout = 15
+        )
+        
+        meta_response.raise_for_status()
+        
+        release_data = meta_response.json()
+        
+        assets = release_data.get("assets", [])
+        
+        asset = None
+        
+        for a in assets:
+            
+            if a["name"] == "example_app.zip":
+                
+                asset = a
+                
+                break
+        
+        if not asset:
+            
+            raise RuntimeError("Release asset 'example_app.zip' not found in latest release")
+        
+        asset_url = asset["url"]
+        
+        asset_size = asset.get("size", 0)
+        
+        self.log.info("Downloading asset from %s (%d bytes)" % (asset_url, asset_size))
+        
+        download_headers = {
+            "Authorization": f"Bearer {Config.launcher.access_token}",
+            "Accept": "application/octet-stream"
         }
 
         response = requests.get(
-            url = self.remote_update_zip_url,
-            headers = headers,
+            url = asset_url,
+            headers = download_headers,
             stream = True,
-            timeout = 30
+            timeout = 120
         )
 
-        self.log.debug("Response headers: %s" % (response.headers))
+        self.log.debug("Response status: %s" % response.status_code)
             
         response.raise_for_status()
         
-        total_length = int(response.headers.get('content-length', 0))
-        
-        if total_length == 0:
-            
-            raise RuntimeError("Cannot get content-length for progress bar")
+        total_length = asset_size or int(response.headers.get('content-length', 0))
 
         downloaded = 0
         chunk_size = 8192
@@ -155,41 +193,86 @@ class Launcher(LoggerMixin):
                     
                     downloaded += len(chunk)
                     
-                    progress = int(downloaded * 100 / total_length)
+                    if total_length > 0:
                     
-                    self.set_progress_value_safe(progress)
+                        progress = int(downloaded * 100 / total_length)
+                    
+                        self.set_progress_value_safe(progress)
 
-        self.log.info("Download finished")
+        self.set_progress_value_safe(100)
         
-    # def apply_update(self):
+        self.log.info("Download finished (%d bytes)" % downloaded)
         
-    #     if not zipfile.is_zipfile(self.app_zip_path):
-            
-    #         mime_type, _ = mimetypes.guess_type(self.app_zip_path)
-            
-    #         self.log.error("Update file is not a valid ZIP. File: %s (detected type: %s)" % (
-    #             self.app_zip_path.name,
-    #             mime_type or "unknown"
-    #             )
-    #         )
-            
-    #         return
+    def apply_update(self):
         
-    #     self.log.info("Applying update from %s" % self.app_zip_path)
-
-    #     with zipfile.ZipFile(self.app_zip_path, "r") as zip_ref:
+        if not zipfile.is_zipfile(self.app_zip_path):
             
-    #         zip_ref.extractall(self.root_path)
+            mime_type, _ = mimetypes.guess_type(str(self.app_zip_path))
+            
+            self.log.error("Update file is not a valid ZIP. File: %s (detected type: %s)" % (
+                self.app_zip_path.name,
+                mime_type or "unknown"
+                )
+            )
+            
+            raise RuntimeError("Downloaded file is not a valid ZIP")
 
-    #     self.app_zip_path.unlink()
-
+        install_dir = Path(sys.executable).parent
         
-
-    #     else:
+        temp_base = Path(tempfile.gettempdir()) / "example_app_update"
+        
+        if temp_base.exists():
             
-    #         self.log.warning("Expected nested structure not found, skipping merge step")
-
-    #     self.log.info("Update applied successfully")
+            shutil.rmtree(temp_base)
+        
+        self.log.info("Extracting update to %s" % temp_base)
+        
+        with zipfile.ZipFile(self.app_zip_path, "r") as zip_ref:
+            
+            zip_ref.extractall(temp_base)
+        
+        source_dir = temp_base / "example_app"
+        
+        if not source_dir.exists() or not (source_dir / "example_app.exe").exists():
+            
+            self.log.error("Invalid update package structure. Expected example_app/ with example_app.exe inside")
+            
+            shutil.rmtree(temp_base)
+            
+            raise RuntimeError("Invalid update package structure")
+        
+        self.log.info("Update extracted. source_dir: %s, install_dir: %s" % (source_dir, install_dir))
+        
+        updater_bat = Path(tempfile.gettempdir()) / "example_app_updater.bat"
+        
+        pid = os.getpid()
+        
+        script = (
+            '@echo off\n'
+            'chcp 65001 >nul\n'
+            ':waitloop\n'
+            'ping 127.0.0.1 -n 2 >nul\n'
+            f'del /F /Q "{install_dir}\\example_app.exe" >nul 2>&1\n'
+            f'if exist "{install_dir}\\example_app.exe" goto waitloop\n'
+            f'robocopy "{source_dir}\\_internal" "{install_dir}\\_internal" /MIR /NFL /NDL /NJH /NJS /R:3 /W:2 >nul 2>&1\n'
+            f'copy /Y "{source_dir}\\example_app.exe" "{install_dir}\\" >nul 2>&1\n'
+            f'rmdir /S /Q "{temp_base}" >nul 2>&1\n'
+            f'del /F /Q "{self.app_zip_path}" >nul 2>&1\n'
+            f'start "" "{install_dir}\\example_app.exe"\n'
+            '(goto) 2>nul & del "%~f0"\n'
+        )
+        
+        updater_bat.write_text(script, encoding = "utf-8")
+        
+        self.log.info("Launching updater script (PID: %d)" % pid)
+        
+        subprocess.Popen(
+            ['cmd', '/c', str(updater_bat)],
+            creationflags = subprocess.CREATE_NO_WINDOW,
+            close_fds = True
+        )
+        
+        self.log.info("Updater script launched, application will exit for update")
 
     async def run(self):
         
@@ -225,6 +308,10 @@ class Launcher(LoggerMixin):
             
             elif self.is_dev_mode == False:
                 
+                self.set_label_text_safe("Verzió ellenőrzése...")
+                
+                await asyncio.sleep(0.1)
+                
                 local_version = await asyncio.to_thread(self.get_local_version)
                 
                 remote_data = await asyncio.to_thread(self.get_remote_version_data)
@@ -233,29 +320,37 @@ class Launcher(LoggerMixin):
 
                 self.log.info("Local version: %s, Remote version: %s" % (local_version, remote_version))
                 
-                self.window.label.setText(f"Local version: {local_version}\nRemote version: {remote_version}")
+                self.set_label_text_safe(f"Helyi verzió: {local_version}\nTávoli verzió: {remote_version}")
+                
+                await asyncio.sleep(1)
 
                 if self.is_update_needed(local_version, remote_version):
                     
-                    self.window.label.setText("Update needed, downloading...")
+                    self.set_label_text_safe("Frissítés szükséges, letöltés...")
                     
-                    await asyncio.to_thread(self.download_update)
+                    await asyncio.sleep(0.1)
                     
-                    self.window.label.setText("Applying update...")
+                    await asyncio.to_thread(self.download_update, remote_version)
                     
-                    # await asyncio.to_thread(self.apply_update)
+                    self.set_label_text_safe("Frissítés telepítése...")
                     
-                    with open(self.version_path, "w", encoding = "utf-8") as f:
-                        
-                        json.dump({"version": remote_version}, f)
-                        
-                    self.window.label.setText("Update applied successfully")
+                    await asyncio.sleep(0.1)
+                    
+                    await asyncio.to_thread(self.apply_update)
+                    
+                    self.set_label_text_safe("Újraindítás...")
+                    
+                    await asyncio.sleep(1)
+                    
+                    self.window.hide()
+                    
+                    sys.exit(0)
                     
                 else:
                     
                     self.set_progress_value_safe(100)
                     
-                    self.window.label.setText("No update needed. Starting application")
+                    self.set_label_text_safe("Nincs frissítés. Alkalmazás indítása...")
 
                 await asyncio.sleep(1)
                 
@@ -267,6 +362,17 @@ class Launcher(LoggerMixin):
             
             sys.exit(1)
                  
+    def set_label_text_safe(self, text: str):
+        
+        if self.window and hasattr(self.window, 'label'):
+            
+            QMetaObject.invokeMethod(
+                self.window.label,
+                "setText",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, text)
+            )
+
     def set_progress_value_safe(self, value: int):
         
         if self.window and hasattr(self.window, 'progress'):
@@ -277,4 +383,3 @@ class Launcher(LoggerMixin):
                 Qt.ConnectionType.QueuedConnection,
                 Q_ARG(int, value)
             )
-            
