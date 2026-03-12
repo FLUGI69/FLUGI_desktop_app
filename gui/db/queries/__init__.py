@@ -1,5 +1,6 @@
 from datetime import datetime
 import typing as t
+from decimal import Decimal
 
 from sqlalchemy.engine import Row
 
@@ -8,6 +9,7 @@ from PyQt6.QtCore import QDateTime
 from utils.dc.material import MaterialData
 from utils.dc.admin.work.status_note import AdminWorkStatusNote
 from utils.enums.storage_item_type_enum import StorageItemTypeEnum
+from utils.enums.tax_number_type_enum import TaxNumberTypeEnum
 from db.tables import example_db
 
 async def insert_work_by_boat_id(
@@ -184,6 +186,17 @@ async def insert_devices_is_scrap(
     previous_quantity: float
 ) -> None: pass
 
+async def insert_quotation_with_order(
+    client_name: str,
+    client_address: str,
+    client_country: str,
+    client_tax_number: str,
+    client_tax_number_type: TaxNumberTypeEnum,
+    project_description: str,
+    other_information: str,
+    client_tax_number_raw: str = None
+) -> str: pass
+
 async def update_work_by_id(
     work_id: int,
     leader: str | None,
@@ -315,6 +328,18 @@ async def update_schedule_by_id(
     values_to_update: dict
 ) -> None: pass
 
+async def update_other_work_prices(
+        work_during_hours: Decimal,
+        work_outside_hours: Decimal,
+        work_sundays: Decimal,
+        travel_budapest: Decimal,
+        travel_outside: Decimal,
+        travel_time: Decimal,
+        travel_time_outside: Decimal,
+        travel_time_sundays: Decimal,
+        accommodation: Decimal
+) -> None: pass
+
 async def select_daily_tasks_from_boats() -> t.Sequence[Row[t.Tuple[example_db.boat, example_db.schedule]]]: pass
 
 async def select_min_future_arrival_date() -> t.Optional[datetime]: pass
@@ -364,6 +389,12 @@ async def select_schedule_by_boat_name(boat_name: str) -> t.Sequence[example_db.
 async def select_work_status_by_work_id(id: int) -> example_db.work_status | None: pass
 
 async def select_work_images_by_work_id(id: int) -> t.Sequence[example_db.work_img]: pass
+
+async def select_next_order_number_preview() -> str: pass
+
+async def select_all_clients() -> t.Sequence[example_db.client]: pass
+
+async def select_client_by_id(client_id: int) -> t.Optional[example_db.client]: pass
 
 async def delete_items_by_id_from_specified_table(
     items_by_type: t.Dict[StorageItemTypeEnum, t.List[int]]

@@ -1896,7 +1896,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 os.makedirs(export_dir)
             
-            current_timestamp = datetime.now(Config.time.timezone_utc).strftime("%Y%m%d%H%M%S%f")
+            current_timestamp = datetime.now(Config.time.timezone_utc).strftime(Config.time.timestamp_format)
             
             pdf_file = os.path.join(export_dir, f"qr_codes_{current_timestamp}.pdf")
             

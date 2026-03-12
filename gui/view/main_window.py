@@ -724,6 +724,7 @@ class MainWindow(QMainWindow, LoggerMixin):
             
             self.admin_view = AdminView(self)
             self.admin_view.refresh_todo.connect(self.refresh_todo_view_table)
+            self.admin_view.refresh_other_work_prices.connect(lambda: asyncio.ensure_future(self.__select_other_work_prices()))
             
             return self.admin_view
         

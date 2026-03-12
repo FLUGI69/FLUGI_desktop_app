@@ -1,44 +1,43 @@
 ﻿import os, sys
 import logging
 import asyncio
+import json
+import re
 import typing as t
-from qasync import asyncSlot
 from datetime import datetime, date, timedelta
-from base64 import b64encode
-from pathlib import Path
 from decimal import Decimal
+from base64 import b64encode
+from uuid import uuid4
+from openai import OpenAIError
 
 from PyQt6.QtWidgets import (
     QWidget,
     QHBoxLayout,
     QVBoxLayout,
-    QListWidget,
     QPushButton,
     QLineEdit,
     QHeaderView,
     QFrame,
     QLabel,
-    QListWidgetItem,
     QFormLayout,
     QComboBox,
     QTextEdit,
     QTableWidget,
-    QScrollArea
+    QScrollArea,
+    QTabWidget,
+    QCheckBox
 )
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer, QUrl
-from PyQt6.QtGui import QIcon, QFont, QPixmap, QCursor, QDesktopServices
+from PyQt6.QtCore import Qt, QSize, QUrl, pyqtSignal
+from PyQt6.QtGui import QIcon, QCursor, QDesktopServices
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from markupsafe import Markup
 from weasyprint import HTML
 
 from utils.logger import LoggerMixin
-from utils.dc.admin.rental_history import RentalHistoryData, RentalHistoryCacheData
-from services.admin.rental_history_cache import RentalHistoryCacheService
-from ..modal.admin.edit_rental_history import EditRentalHistoryModal
-from ..modal.confirm_action import ConfirmActionModal
-from utils.enums.storage_item_type_enum import StorageItemTypeEnum
+from utils.enums.tax_number_type_enum import TaxNumberTypeEnum
+from utils.dc.admin.quotation import QuotationData, QuotationTableData, ClientData
 from config import Config
 from db import queries
 
@@ -50,6 +49,8 @@ class PriceQuotationContent(QWidget, LoggerMixin):
 
     log: logging.Logger
     
+    refresh_other_work_prices = pyqtSignal()
+
     def __init__(self,
         admin_view: 'AdminView'         
         ):
@@ -58,13 +59,26 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         self.admin_view = admin_view
         
-        self.dropdown_items = admin_view.main_window.app.utility_calculator.available_currencies
+        self.utility_calculator = admin_view.main_window.app.utility_calculator
+        
+        self.available_currencies = self.utility_calculator.available_currencies
 
         self.quotation_template = admin_view.main_window.app.templates["price_quotation"]
         
+        self.jinja_env = admin_view.main_window.app.jinja_env
+        
         self.other_work_prices = admin_view.main_window.other_work_prices
         
+        self.openai = admin_view.main_window.app.openai
+        
+        self._openai_lock = admin_view.main_window.app.openapi_lock
+        
+        self._preview_order_number = Markup(f"{date.today().strftime('%Y')}????")
+        
         self.__init_view()
+        
+        asyncio.ensure_future(self._fetch_preview_order_number())
+        asyncio.ensure_future(self._fetch_existing_clients())
      
     @staticmethod
     def icon(name: str) -> QIcon:
@@ -84,6 +98,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
             scroll_layout.setSpacing(20)
 
+            scroll_layout.addWidget(self.set_language_section())
             scroll_layout.addWidget(self.set_currencies_section())
             scroll_layout.addWidget(self.set_client_header_section())
             scroll_layout.addWidget(self.set_work_details_section())
@@ -98,52 +113,215 @@ class PriceQuotationContent(QWidget, LoggerMixin):
 
             self.update_preview()
     
+    def set_language_section(self):
+        
+        frame = QFrame()
+        layout = QVBoxLayout(frame)
+        
+        lang_label = QLabel("Language")
+        lang_label.setStyleSheet(Config.styleSheets.label)
+        
+        self.language_dropdown = QComboBox()
+        self.language_dropdown.setObjectName("Dropdown")
+        self.language_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
+        self.language_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.language_dropdown.setFixedHeight(50)
+        
+        for code, name in Config.lang.lang_codes.items():
+            
+            self.language_dropdown.addItem(name, code)
+        
+        self.language_dropdown.setCurrentIndex(0)
+        
+        layout.addWidget(lang_label)
+        layout.addWidget(self.language_dropdown)
+        
+        return frame
+    
     def set_currencies_section(self):
         
         frame = QFrame()
-        layout = QFormLayout(frame)
+        layout = QHBoxLayout(frame)
 
-        self.currency_dropdown = QComboBox()
-        self.currency_dropdown.setObjectName("Dropdown")
-        self.currency_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
-        self.currency_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.currency_dropdown.setFixedHeight(50)
+        input_label = QLabel("Input Currency")
+        input_label.setStyleSheet(Config.styleSheets.label)
+        
+        self.currency_input_dropdown = QComboBox()
+        self.currency_input_dropdown.setObjectName("Dropdown")
+        self.currency_input_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
+        self.currency_input_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.currency_input_dropdown.setFixedHeight(50)
+
+        output_label = QLabel("Output Currency")
+        output_label.setStyleSheet(Config.styleSheets.label)
+        
+        self.currency_output_dropdown = QComboBox()
+        self.currency_output_dropdown.setObjectName("Dropdown")
+        self.currency_output_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
+        self.currency_output_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.currency_output_dropdown.setFixedHeight(50)
         
         self.prepare_dropwdown_currencies()
 
-        layout.addRow(self.currency_dropdown)
+        left = QVBoxLayout()
+        left.addWidget(input_label)
+        left.addWidget(self.currency_input_dropdown)
+        
+        right = QVBoxLayout()
+        right.addWidget(output_label)
+        right.addWidget(self.currency_output_dropdown)
+
+        layout.addLayout(left)
+        layout.addLayout(right)
         
         return frame
 
     def set_client_header_section(self):
         
         frame = QFrame()
-        layout = QFormLayout(frame)
+        frame_layout = QVBoxLayout(frame)
+        
+        self.client_tab_widget = QTabWidget()
+        self.client_tab_widget.tabBar().setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
+        new_client_tab = QWidget()
+        new_client_layout = QFormLayout(new_client_tab)
+        
         self.client_name = QLineEdit()
         self.client_name.setFixedHeight(50)
         self.client_name.setStyleSheet(Config.styleSheets.line_edit)
-        self.client_name.setPlaceholderText("Client name (Example Company Ltd.)")
+        self.client_name.setPlaceholderText("Client Name (Example Ltd.)")
+        
+        self.client_name_error = QLabel()
+        self.client_name_error.setObjectName("error")
+        self.client_name_error.setVisible(False)
         
         self.client_address = QLineEdit()
         self.client_address.setFixedHeight(50)
         self.client_address.setStyleSheet(Config.styleSheets.line_edit)
-        self.client_address.setPlaceholderText("Client address (1234 Example Street 11.)")
+        self.client_address.setPlaceholderText("Client Address (1234. Example Street 111.)")
         
         self.client_country = QLineEdit()
         self.client_country.setFixedHeight(50)
         self.client_country.setStyleSheet(Config.styleSheets.line_edit)
-        self.client_country.setPlaceholderText("Country (Example Country)")
+        self.client_country.setPlaceholderText("Country (Exampleland)")
         
         self.client_vat = QLineEdit()
         self.client_vat.setFixedHeight(50)
         self.client_vat.setStyleSheet(Config.styleSheets.line_edit)
-        self.client_vat.setPlaceholderText("Tax number (VAT-12345678-121-232)")
+        
+        self.client_vat_error = QLabel()
+        self.client_vat_error.setObjectName("error")
+        self.client_vat_error.setVisible(False)
+        
+        self.tax_type_dropdown = QComboBox()
+        self.tax_type_dropdown.setObjectName("Dropdown")
+        self.tax_type_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
+        self.tax_type_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.tax_type_dropdown.setFixedHeight(50)
+        self.tax_type_dropdown.setFixedWidth(150)
+        
+        self.tax_type_dropdown.addItem("VAT", TaxNumberTypeEnum.VAT)
+        self.tax_type_dropdown.addItem("UID", TaxNumberTypeEnum.UID)
+        self.tax_type_dropdown.addItem("EIN / TIN", TaxNumberTypeEnum.EIN)
+        self.tax_type_dropdown.addItem("MVA", TaxNumberTypeEnum.MVA)
+        self.tax_type_dropdown.addItem("VKN", TaxNumberTypeEnum.VKN)
+        
+        self.tax_type_dropdown.setCurrentIndex(0)
+        self.tax_type_dropdown.currentIndexChanged.connect(self._on_tax_type_changed)
+        
+        self._on_tax_type_changed()
+        
+        tax_layout = QHBoxLayout()
+        tax_layout.addWidget(self.tax_type_dropdown)
+        tax_layout.addWidget(self.client_vat)
 
-        layout.addRow(self.client_name)
-        layout.addRow(self.client_address)
-        layout.addRow(self.client_country)
-        layout.addRow(self.client_vat)
+        new_client_layout.addRow(self.client_name)
+        new_client_layout.addRow(self.client_name_error)
+        new_client_layout.addRow(self.client_address)
+        new_client_layout.addRow(self.client_country)
+        new_client_layout.addRow(tax_layout)
+        new_client_layout.addRow(self.client_vat_error)
+        
+        existing_client_tab = QWidget()
+        existing_client_layout = QVBoxLayout(existing_client_tab)
+        
+        self.existing_client_dropdown = QComboBox()
+        self.existing_client_dropdown.setObjectName("Dropdown")
+        self.existing_client_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
+        self.existing_client_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.existing_client_dropdown.setFixedHeight(50)
+        self.existing_client_dropdown.setMaxVisibleItems(15)
+        self.existing_client_dropdown.addItem("-- Select Client --", None)
+        self.existing_client_dropdown.currentIndexChanged.connect(
+            lambda: asyncio.ensure_future(self._on_existing_client_changed())
+        )
+        
+        existing_fields_layout = QFormLayout()
+        
+        self.existing_client_name = QLineEdit()
+        self.existing_client_name.setFixedHeight(50)
+        self.existing_client_name.setStyleSheet(Config.styleSheets.line_edit)
+        self.existing_client_name.setPlaceholderText("Client Name")
+        
+        self.existing_client_name_error = QLabel()
+        self.existing_client_name_error.setObjectName("error")
+        self.existing_client_name_error.setVisible(False)
+        
+        self.existing_client_address = QLineEdit()
+        self.existing_client_address.setFixedHeight(50)
+        self.existing_client_address.setStyleSheet(Config.styleSheets.line_edit)
+        self.existing_client_address.setPlaceholderText("Client Address")
+        
+        self.existing_client_country = QLineEdit()
+        self.existing_client_country.setFixedHeight(50)
+        self.existing_client_country.setStyleSheet(Config.styleSheets.line_edit)
+        self.existing_client_country.setPlaceholderText("Country")
+        
+        self.existing_client_vat = QLineEdit()
+        self.existing_client_vat.setFixedHeight(50)
+        self.existing_client_vat.setStyleSheet(Config.styleSheets.line_edit)
+        self.existing_client_vat.setPlaceholderText("VAT Number")
+        self.existing_client_vat_error = QLabel()
+        self.existing_client_vat_error.setObjectName("error")
+        self.existing_client_vat_error.setVisible(False)
+        
+        self.existing_tax_type_dropdown = QComboBox()
+        self.existing_tax_type_dropdown.setObjectName("Dropdown")
+        self.existing_tax_type_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
+        self.existing_tax_type_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.existing_tax_type_dropdown.setFixedHeight(50)
+        self.existing_tax_type_dropdown.setFixedWidth(150)
+        
+        self.existing_tax_type_dropdown.addItem("VAT", TaxNumberTypeEnum.VAT)
+        self.existing_tax_type_dropdown.addItem("UID", TaxNumberTypeEnum.UID)
+        self.existing_tax_type_dropdown.addItem("EIN / TIN", TaxNumberTypeEnum.EIN)
+        self.existing_tax_type_dropdown.addItem("MVA", TaxNumberTypeEnum.MVA)
+        self.existing_tax_type_dropdown.addItem("VKN", TaxNumberTypeEnum.VKN)
+        
+        self.existing_tax_type_dropdown.setCurrentIndex(0)
+        self.existing_tax_type_dropdown.currentIndexChanged.connect(self._on_existing_tax_type_changed)
+        
+        self._on_existing_tax_type_changed()
+        
+        existing_tax_layout = QHBoxLayout()
+        existing_tax_layout.addWidget(self.existing_tax_type_dropdown)
+        existing_tax_layout.addWidget(self.existing_client_vat)
+        
+        existing_fields_layout.addRow(self.existing_client_name)
+        existing_fields_layout.addRow(self.existing_client_name_error)
+        existing_fields_layout.addRow(self.existing_client_address)
+        existing_fields_layout.addRow(self.existing_client_country)
+        existing_fields_layout.addRow(existing_tax_layout)
+        existing_fields_layout.addRow(self.existing_client_vat_error)
+        
+        existing_client_layout.addWidget(self.existing_client_dropdown)
+        existing_client_layout.addLayout(existing_fields_layout)
+        
+        self.client_tab_widget.addTab(new_client_tab, "New Client")
+        self.client_tab_widget.addTab(existing_client_tab, "Existing Client")
+        
+        frame_layout.addWidget(self.client_tab_widget)
 
         return frame
 
@@ -155,16 +333,39 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.boat_name = QLineEdit()
         self.boat_name.setFixedHeight(50)
         self.boat_name.setStyleSheet(Config.styleSheets.line_edit)
-        self.boat_name.setPlaceholderText("Ship name (MS Viktoria)")
+        self.boat_name.setPlaceholderText("Boat Name (MS Viktoria)")
 
         self.work_description = QTextEdit()
         self.work_description.setStyleSheet(Config.styleSheets.text_edit)
         self.work_description.setFixedHeight(150)
-        self.work_description.setPlaceholderText("Work description (Heat pump replacement)")
+        self.work_description.setPlaceholderText("Work Description (Heat Pump Replacement)")
+
+        vat_layout = QHBoxLayout()
+        
+        self.surcharge_dropdown = QComboBox()
+        self.surcharge_dropdown.setObjectName("Dropdown")
+        self.surcharge_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
+        self.surcharge_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.surcharge_dropdown.setFixedHeight(50)
+        self.surcharge_dropdown.addItem("No Surcharge", False)
+        self.surcharge_dropdown.addItem("Surcharge %", True)
+        self.surcharge_dropdown.setCurrentIndex(0)
+        
+        self.surcharge_percentage_input = QLineEdit()
+        self.surcharge_percentage_input.setFixedHeight(50)
+        self.surcharge_percentage_input.setFixedWidth(120)
+        self.surcharge_percentage_input.setStyleSheet(Config.styleSheets.line_edit)
+        self.surcharge_percentage_input.setPlaceholderText("%")
+        
+        vat_layout.addWidget(self.surcharge_dropdown)
+        vat_layout.addWidget(self.surcharge_percentage_input)
+        vat_layout.addStretch()
+        
+        layout.addLayout(vat_layout)
 
         self.work_table = QTableWidget(0, 5)
         self.work_table.setStyleSheet(Config.styleSheets.table_widget)
-        self.work_table.setHorizontalHeaderLabels(["Name", "Quantity", "Unit", "Net price", ""])
+        self.work_table.setHorizontalHeaderLabels(["Description", "Quantity", "Unit", "Net Price", ""])
         self.work_table.setFixedHeight(250)
         self.work_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.work_table.verticalHeader().setDefaultSectionSize(50)
@@ -181,7 +382,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             
             self.work_table.setColumnWidth(i, widths[i])
 
-        add_row_btn = QPushButton("Add")
+        add_row_btn = QPushButton("Add Row")
         add_row_btn.setObjectName("WorkBtn")
         add_row_btn.setStyleSheet(Config.styleSheets.work_btn)
         add_row_btn.setFixedWidth(200)
@@ -189,7 +390,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         add_row_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row_btn.clicked.connect(self.add_row)
         
-        label = QLabel("Work details")
+        label = QLabel("Work Details")
         label.setStyleSheet(Config.styleSheets.label)
 
         layout.addWidget(label)
@@ -205,9 +406,11 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         frame = QFrame()
         layout = QVBoxLayout(frame)
+        layout.setSpacing(2)
         
-        label = QLabel("Additional information")
+        label = QLabel("Other information")
         label.setStyleSheet(Config.styleSheets.label)
+        label.setContentsMargins(0, 0, 0, 0)
 
         layout.addWidget(label)
         
@@ -217,6 +420,102 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.additional_info.setPlaceholderText("Additional information")
         
         layout.addWidget(self.additional_info)
+
+        checkbox_layout = QHBoxLayout()
+        
+        self.custom_prices_checkbox = QCheckBox("Modify custom prices")
+        self.custom_prices_checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.custom_prices_checkbox.setStyleSheet(Config.styleSheets.label)
+        self.custom_prices_checkbox.stateChanged.connect(self._on_custom_prices_toggled)
+        
+        checkbox_layout.addWidget(self.custom_prices_checkbox)
+        checkbox_layout.addStretch()
+        
+        layout.addLayout(checkbox_layout)
+        
+        self.custom_prices_container = QWidget()
+        self.custom_prices_container.setVisible(False)
+        prices_layout = QFormLayout(self.custom_prices_container)
+        prices_layout.setSpacing(8)
+        
+        self.price_work_during_hours = QLineEdit()
+        self.price_work_during_hours.setFixedHeight(50)
+        self.price_work_during_hours.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_work_during_hours.setPlaceholderText("Work during hours")
+        
+        self.price_work_outside_hours = QLineEdit()
+        self.price_work_outside_hours.setFixedHeight(50)
+        self.price_work_outside_hours.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_work_outside_hours.setPlaceholderText("Work outside hours and on Saturdays")
+        
+        self.price_work_sundays = QLineEdit()
+        self.price_work_sundays.setFixedHeight(50)
+        self.price_work_sundays.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_work_sundays.setPlaceholderText("Sundays and holidays +100%")
+        
+        self.price_travel_budapest = QLineEdit()
+        self.price_travel_budapest.setFixedHeight(50)
+        self.price_travel_budapest.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_travel_budapest.setPlaceholderText("Travel within Budapest")
+        
+        self.price_travel_outside = QLineEdit()
+        self.price_travel_outside.setFixedHeight(50)
+        self.price_travel_outside.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_travel_outside.setPlaceholderText("Travel outside Budapest / abroad")
+        
+        self.price_travel_time = QLineEdit()
+        self.price_travel_time.setFixedHeight(50)
+        self.price_travel_time.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_travel_time.setPlaceholderText("Travel time")
+        
+        self.price_travel_time_outside = QLineEdit()
+        self.price_travel_time_outside.setFixedHeight(50)
+        self.price_travel_time_outside.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_travel_time_outside.setPlaceholderText("Travel time outside working hours +50%")
+        
+        self.price_travel_time_sundays = QLineEdit()
+        self.price_travel_time_sundays.setFixedHeight(50)
+        self.price_travel_time_sundays.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_travel_time_sundays.setPlaceholderText("Travel time on Sundays +100%")
+        
+        self.price_accommodation = QLineEdit()
+        self.price_accommodation.setFixedHeight(50)
+        self.price_accommodation.setStyleSheet(Config.styleSheets.line_edit)
+        self.price_accommodation.setPlaceholderText("Accommodation")
+        
+        prices_layout.addRow(QLabel("Work during hours:"), self.price_work_during_hours)
+        prices_layout.addRow(QLabel("Work outside hours and on Saturdays:"), self.price_work_outside_hours)
+        prices_layout.addRow(QLabel("Sundays and holidays +100%:"), self.price_work_sundays)
+        prices_layout.addRow(QLabel("Travel within Budapest:"), self.price_travel_budapest)
+        prices_layout.addRow(QLabel("Travel outside Budapest / abroad:"), self.price_travel_outside)
+        prices_layout.addRow(QLabel("Travel time:"), self.price_travel_time)
+        prices_layout.addRow(QLabel("Travel time outside working hours +50%:"), self.price_travel_time_outside)
+        prices_layout.addRow(QLabel("Travel time on Sundays +100%:"), self.price_travel_time_sundays)
+        prices_layout.addRow(QLabel("Accommodation:"), self.price_accommodation)
+        
+        prices_btn_layout = QHBoxLayout()
+        
+        self.load_prices_btn = QPushButton("Load Prices")
+        self.load_prices_btn.setObjectName("WorkBtn")
+        self.load_prices_btn.setStyleSheet(Config.styleSheets.work_btn)
+        self.load_prices_btn.setFixedSize(200, 50)
+        self.load_prices_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.load_prices_btn.clicked.connect(self._load_current_prices)
+        
+        self.save_prices_btn = QPushButton("Save Prices")
+        self.save_prices_btn.setObjectName("WorkBtn")
+        self.save_prices_btn.setStyleSheet(Config.styleSheets.work_btn)
+        self.save_prices_btn.setFixedSize(200, 50)
+        self.save_prices_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_prices_btn.clicked.connect(lambda: asyncio.ensure_future(self._save_other_work_prices()))
+        
+        prices_btn_layout.addWidget(self.load_prices_btn)
+        prices_btn_layout.addWidget(self.save_prices_btn)
+        prices_btn_layout.addStretch()
+        
+        prices_layout.addRow(prices_btn_layout)
+        
+        layout.addWidget(self.custom_prices_container)
 
         return frame
     
@@ -251,7 +550,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.export_button.setObjectName("WorkBtn")
         self.export_button.setStyleSheet(Config.styleSheets.work_btn)
         self.export_button.setFixedSize(200, 50)
-        self.export_button.clicked.connect(self.export_pdf)
+        self.export_button.clicked.connect(lambda: asyncio.ensure_future(self._export_pdf_async()))
 
         btn_layout.addWidget(self.render_button)
         btn_layout.addWidget(self.export_button)
@@ -265,28 +564,358 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         html = self.render_html()
         self.web_view.setHtml(html)
+    
+    async def _fetch_preview_order_number(self):
         
-    def export_pdf(self):
-        
-        html = self.render_html()
-        
-        if html != "":
-      
-            quotations_dir = "quotations"
+        try:
             
-            if os.path.exists(quotations_dir) is False:
+            self._preview_order_number = await queries.select_next_order_number_preview()
+            
+            self.log.debug("Preview order number: %s" % self._preview_order_number)
+            
+        except Exception as e:
+            
+            self.log.error("Failed to fetch preview order number: %s" % str(e))
+    
+    def _on_tax_type_changed(self):
+        
+        placeholders = {
+            TaxNumberTypeEnum.VAT: "Tax number (HU14515404242)",
+            TaxNumberTypeEnum.UID: "UID number (CHE-123.456.789 MWST)",
+            TaxNumberTypeEnum.EIN: "EIN / TIN number (12-3456789)",
+            TaxNumberTypeEnum.MVA: "MVA number (NO123456789MVA)",
+            TaxNumberTypeEnum.VKN: "VKN number (1234567890)"
+        }
+        
+        tax_type = self.tax_type_dropdown.currentData()
+        
+        self.client_vat.setPlaceholderText(placeholders.get(tax_type, "Tax number"))
+    
+    def _on_existing_tax_type_changed(self):
+        
+        placeholders = {
+            TaxNumberTypeEnum.VAT: "Tax number (HU14515404242)",
+            TaxNumberTypeEnum.UID: "UID number (CHE-123.456.789 MWST)",
+            TaxNumberTypeEnum.EIN: "EIN / TIN number (12-3456789)",
+            TaxNumberTypeEnum.MVA: "MVA number (NO123456789MVA)",
+            TaxNumberTypeEnum.VKN: "VKN number (1234567890)"
+        }
+        
+        tax_type = self.existing_tax_type_dropdown.currentData()
+        
+        self.existing_client_vat.setPlaceholderText(placeholders.get(tax_type, "Tax number"))
+    
+    async def _fetch_existing_clients(self):
+        
+        try:
+            
+            clients = await queries.select_all_clients()
+            
+            self.existing_client_dropdown.blockSignals(True)
+            
+            self.existing_client_dropdown.clear()
+            self.existing_client_dropdown.addItem("-- Select a client --", None)
+            
+            for client in clients:
                 
-                os.makedirs(quotations_dir)
+                display_text = f"{client.name} – {client.tax_number}"
+                
+                self.existing_client_dropdown.addItem(display_text, client.id)
             
-            current_timestamp = datetime.now(Config.time.timezone_utc).strftime("%Y%m%d%H%M%S%f")
+            self.existing_client_dropdown.setCurrentIndex(0)
             
-            safe_boat_name = self.boat_name.text().strip().replace(" ", "_")
+            self.existing_client_dropdown.blockSignals(False)
             
-            pdf_file = os.path.join(quotations_dir, f"{safe_boat_name}_[{current_timestamp}].pdf")
+            self.log.debug("Loaded %d existing clients" % len(clients))
             
-            HTML(string = html).write_pdf(pdf_file)
+        except Exception as e:
             
-            QDesktopServices.openUrl(QUrl.fromLocalFile(pdf_file))
+            self.log.error("Failed to fetch existing clients: %s" % str(e))
+    
+    async def _on_existing_client_changed(self):
+        
+        client_id = self.existing_client_dropdown.currentData()
+        
+        if client_id is None:
+            
+            self.existing_client_name.clear()
+            self.existing_client_address.clear()
+            self.existing_client_country.clear()
+            self.existing_client_vat.clear()
+            self.existing_tax_type_dropdown.setCurrentIndex(0)
+            
+            return
+        
+        try:
+            
+            client = await queries.select_client_by_id(client_id)
+            
+            if client is None:
+                
+                self.log.warning("Client with id %d not found" % client_id)
+                
+                return
+            
+            self.existing_client_name.setText(client.name)
+            self.existing_client_address.setText(client.address)
+            self.existing_client_country.setText(client.country)
+            self.existing_client_vat.setText(client.tax_number)
+            
+            tax_type_index = self.existing_tax_type_dropdown.findData(client.tax_number_type)
+            
+            if tax_type_index >= 0:
+                
+                self.existing_tax_type_dropdown.setCurrentIndex(tax_type_index)
+            
+            self.log.debug("Loaded client data for id %d: %s" % (client_id, client.name))
+            
+        except Exception as e:
+            
+            self.log.error("Failed to fetch client by id %d: %s" % (client_id, str(e)))
+    
+    @staticmethod
+    def _validate_tax_number(tax_number: str, tax_type: TaxNumberTypeEnum) -> bool:
+        
+        patterns = {
+            TaxNumberTypeEnum.VAT: r'^[A-Z]{2}\d{8,12}$',
+            TaxNumberTypeEnum.UID: r'^CHE-?\d{3}\.?\d{3}\.?\d{3}\s*(MWST|TVA|IVA)$',
+            TaxNumberTypeEnum.EIN: r'^\d{2}-?\d{7}$',
+            TaxNumberTypeEnum.MVA: r'^NO\d{9}MVA$',
+            TaxNumberTypeEnum.VKN: r'^\d{10}$'
+        }
+        
+        pattern = patterns.get(tax_type)
+        
+        if pattern is None:
+            
+            return False
+        
+        return re.match(pattern, tax_number) is not None
+    
+    def _on_custom_prices_toggled(self, state):
+        
+        self.custom_prices_container.setVisible(state == Qt.CheckState.Checked.value)
+    
+    def _load_current_prices(self):
+        
+        prices = self.other_work_prices.model_dump()
+        
+        _, output_currency = self.get_currency_settings()
+        
+        display_currency = output_currency if output_currency is not None else "HUF"
+        
+        field_map = {
+            "work_during_hours": self.price_work_during_hours,
+            "work_outside_hours": self.price_work_outside_hours,
+            "work_sundays": self.price_work_sundays,
+            "travel_budapest": self.price_travel_budapest,
+            "travel_outside": self.price_travel_outside,
+            "travel_time": self.price_travel_time,
+            "travel_time_outside": self.price_travel_time_outside,
+            "travel_time_sundays": self.price_travel_time_sundays,
+            "accommodation": self.price_accommodation,
+        }
+        
+        for key, field in field_map.items():
+            
+            huf_value = float(prices[key])
+            
+            converted = self.convert_price(huf_value, "HUF", display_currency)
+            
+            field.setText(str(round(converted, 2)))
+    
+    async def _save_other_work_prices(self):
+        
+        _, output_currency = self.get_currency_settings()
+        
+        display_currency = output_currency if output_currency is not None else "HUF"
+        
+        field_map = {
+            "work_during_hours": self.price_work_during_hours,
+            "work_outside_hours": self.price_work_outside_hours,
+            "work_sundays": self.price_work_sundays,
+            "travel_budapest": self.price_travel_budapest,
+            "travel_outside": self.price_travel_outside,
+            "travel_time": self.price_travel_time,
+            "travel_time_outside": self.price_travel_time_outside,
+            "travel_time_sundays": self.price_travel_time_sundays,
+            "accommodation": self.price_accommodation,
+        }
+        
+        try:
+            
+            huf_values = {}
+            
+            for key, field in field_map.items():
+                
+                text = field.text().replace(",", ".").strip()
+                
+                value = float(text) if text else 0.0
+                
+                huf_values[key] = Decimal(str(round(self.convert_price(value, display_currency, "HUF"), 2)))
+            
+            await queries.update_other_work_prices(
+                huf_values["work_during_hours"],
+                huf_values["work_outside_hours"],
+                huf_values["work_sundays"],
+                huf_values["travel_budapest"],
+                huf_values["travel_outside"],
+                huf_values["travel_time"],
+                huf_values["travel_time_outside"],
+                huf_values["travel_time_sundays"],
+                huf_values["accommodation"]
+            )
+            
+            self.refresh_other_work_prices.emit()
+            
+            self.log.info("Other work prices updated successfully")
+            
+        except Exception as e:
+            
+            self.log.error("Failed to update other work prices: %s" % str(e))
+        
+    async def _export_pdf_async(self):
+        
+        is_existing_client = self.client_tab_widget.currentIndex() == 1
+        
+        if is_existing_client:
+            
+            client_name = self.existing_client_name.text().strip()
+            client_address = self.existing_client_address.text().strip()
+            client_country = self.existing_client_country.text().strip()
+            client_vat = self.existing_client_vat.text().strip()
+            tax_type = self.existing_tax_type_dropdown.currentData()
+            name_error_label = self.existing_client_name_error
+            vat_error_label = self.existing_client_vat_error
+            
+        else:
+            
+            client_name = self.client_name.text().strip()
+            client_address = self.client_address.text().strip()
+            client_country = self.client_country.text().strip()
+            client_vat = self.client_vat.text().strip()
+            tax_type = self.tax_type_dropdown.currentData()
+            name_error_label = self.client_name_error
+            vat_error_label = self.client_vat_error
+        
+        description = self.work_description.toPlainText().strip()
+        
+        information = self.additional_info.toPlainText().strip()
+        
+        name_error_label.setVisible(False)
+        vat_error_label.setVisible(False)
+        
+        has_error = False
+        
+        if client_name == "":
+            
+            name_error_label.setText("Client name is required")
+            name_error_label.setVisible(True)
+            
+            self.log.warning("Input validation failed: 'client_name' field is empty")
+            
+            has_error = True
+        
+        if client_vat == "":
+            
+            vat_error_label.setText("Tax number is required")
+            vat_error_label.setVisible(True)
+            
+            self.log.warning("Input validation failed: 'client_vat' field is empty")
+            
+            has_error = True
+        
+        if client_vat != "" and self._validate_tax_number(client_vat, tax_type) is False:
+            
+            vat_error_label.setText("The tax number does not match the %s format" % tax_type.value)
+            vat_error_label.setVisible(True)
+            
+            self.log.warning("Tax number '%s' does not match %s format" % (client_vat, tax_type.value))
+            
+            has_error = True
+        
+        if has_error is True:
+            
+            return
+        
+        real_order_number = await queries.insert_quotation_with_order(
+            client_name = client_name,
+            client_address = client_address,
+            client_country = client_country,
+            client_tax_number = client_vat,
+            client_tax_number_type = tax_type,
+            project_description = description,
+            other_information = information,
+            client_tax_number_raw = client_vat
+        )
+        
+        self.log.debug("Quotation saved with order number: %s" % real_order_number)
+        
+        html_hu = self.render_html(order_number = real_order_number)
+        
+        if html_hu == "":
+            
+            return
+        
+        quotations_dir = "quotations"
+        
+        unique_id = uuid4().hex[:8]
+        
+        current_timestamp = datetime.now(Config.time.timezone_utc).strftime(Config.time.timestamp_format)
+        
+        safe_boat_name = self.boat_name.text().strip().replace(" ", "_")
+        
+        pdf_filename = f"{safe_boat_name}_[{current_timestamp}]_{unique_id}.pdf"
+        
+        hungarian_dir = os.path.join(quotations_dir, "hungarian")
+        
+        os.makedirs(hungarian_dir, exist_ok = True)
+        
+        hu_pdf_file = os.path.join(hungarian_dir, pdf_filename)
+        
+        HTML(string = html_hu).write_pdf(hu_pdf_file)
+        
+        self.log.debug("Hungarian PDF saved: %s" % hu_pdf_file)
+        
+        lang_code = self.language_dropdown.currentData()
+        
+        if lang_code is not None and lang_code != "HU":
+            
+            try:
+                
+                template_translations = await self._translate_template_strings(lang_code)
+                
+                user_translations = await self._translate_user_content(lang_code)
+                
+                all_translations = {**template_translations, **user_translations}
+                
+                translator = lambda x, t = all_translations: t.get(x, x)
+                
+                html_other = self.render_html(
+                    translator = translator,
+                    translated_content = all_translations,
+                    order_number = real_order_number
+                )
+                
+                other_dir = os.path.join(quotations_dir, "other")
+                
+                os.makedirs(other_dir, exist_ok = True)
+                
+                other_pdf_file = os.path.join(other_dir, pdf_filename)
+                
+                HTML(string = html_other).write_pdf(other_pdf_file)
+                
+                self.log.debug("Translated PDF saved: %s" % other_pdf_file)
+                
+                QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(other_pdf_file)))
+                
+            except (OpenAIError, json.JSONDecodeError) as e:
+                
+                self.log.error("Translation failed, only Hungarian PDF saved: %s" % str(e))
+        
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(hu_pdf_file)))
+        
+        await self._fetch_preview_order_number()
         
     def add_row(self):
         
@@ -301,7 +930,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         remove_btn.setFixedHeight(50)
         remove_btn.setIcon(PriceQuotationContent.icon("trash.svg"))
         remove_btn.setIconSize(QSize(20, 20))
-        remove_btn.setToolTip("Delete")
+        remove_btn.setToolTip("Törlés")
         remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         remove_btn.clicked.connect(lambda _, r = row: self.remove_row(r))
         
@@ -312,10 +941,14 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.work_table.removeRow(row)
         
         for r in range(self.work_table.rowCount()):
+            
             btn = self.work_table.cellWidget(r, 4)
-            if btn:
+            
+            if btn is not None and isinstance(btn, QPushButton):
+                
                 btn.clicked.disconnect()
-                btn.clicked.connect(lambda _, r=r: self.remove_row(r))
+                
+                btn.clicked.connect(lambda _, r = r: self.remove_row(r))
     
     def svg_to_base64(self, filename):
         
@@ -323,52 +956,213 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             
             return b64encode(f.read()).decode("utf-8")
 
-    def get_table_data(self):
-        data = []
-
-        for row in range(self.work_table.rowCount()):
-            name_item = self.work_table.item(row, 0)
-            qty_item = self.work_table.item(row, 1)
-            unit_item = self.work_table.item(row, 2)
-            price_item = self.work_table.item(row, 3)
-
-            if name_item and qty_item and unit_item and price_item:
-         
-                try:
-                    qty = float(qty_item.text())
-                except ValueError:
-                    qty = 0
-
-                if qty.is_integer():
-                    qty_display = str(int(qty))
-                else:
-                    qty_display = str(qty)
-
-                price_text = price_item.text().replace("Ft", "").replace(" ", "")
-                try:
-                    price = float(price_text)
-                except ValueError:
-                    price = 0
-
-                total_price = price * qty
-                price_display = f"€ {total_price:.2f}" 
-
-                data.append({
-                    "name": name_item.text(),
-                    "qty": qty_display,
-                    "unit": unit_item.text(),
-                    "price": price_display
-                })
-
-        return data
+    def get_currency_symbol(self, currency_code: str) -> str:
+        
+        return Config.quotation.currency_symbols.get(currency_code, currency_code)
     
-    def render_html(self):
+    def get_currency_settings(self):
+        
+        input_currency = self.currency_input_dropdown.currentData()
+        
+        output_currency = self.currency_output_dropdown.currentData()
+        
+        return input_currency, output_currency
+    
+    def convert_price(self, value: float, from_currency: str, to_currency: str) -> float:
+        # print(f"Converting price: {value} from {from_currency} to {to_currency}")
+        
+        if from_currency is not None and to_currency is not None and from_currency != to_currency:
+            
+            return self.utility_calculator.exchange_value(value, from_currency, to_currency)
+        
+        return value
+
+    @staticmethod
+    def format_quantity(qty: float) -> str:
+        
+        if qty == int(qty):
+            
+            return f"{int(qty):,}".replace(",", ".")
+        
+        formatted = f"{qty:.4f}".rstrip("0").rstrip(".")
+        
+        parts = formatted.split(".")
+        
+        int_part = f"{int(parts[0]):,}".replace(",", ".")
+        
+        return f"{int_part},{parts[1]}" if len(parts) > 1 else int_part
+
+    @staticmethod
+    def format_price(value: float) -> str:
+        
+        if value == int(value):
+            
+            return f"{int(value):,}".replace(",", ".")
+        
+        formatted = f"{value:.2f}".rstrip("0").rstrip(".")
+        
+        parts = formatted.split(".")
+        
+        int_part = f"{int(parts[0]):,}".replace(",", ".")
+        
+        return f"{int_part},{parts[1]}" if len(parts) > 1 else int_part
+
+    def get_surcharge_settings(self):
+        
+        enabled = self.surcharge_dropdown.currentData()
+        
+        percent = 0.0
+        
+        if enabled is True:
+            
+            try:
+                
+                percent = float(self.surcharge_percentage_input.text().replace(",", "."))
+                
+            except ValueError:
+                
+                percent = 0.0
+                
+        return enabled, percent
+
+    def _get_converted_prices(self) -> dict:
+        
+        _, output_currency = self.get_currency_settings()
+        
+        display_currency = output_currency if output_currency is not None else "HUF"
+        # print("Display currency:", display_currency)
+        
+        if self.custom_prices_checkbox.isChecked():
+            
+            field_map = {
+                "work_during_hours": self.price_work_during_hours,
+                "work_outside_hours": self.price_work_outside_hours,
+                "work_sundays": self.price_work_sundays,
+                "travel_budapest": self.price_travel_budapest,
+                "travel_outside": self.price_travel_outside,
+                "travel_time": self.price_travel_time,
+                "travel_time_outside": self.price_travel_time_outside,
+                "travel_time_sundays": self.price_travel_time_sundays,
+                "accommodation": self.price_accommodation,
+            }
+            
+            converted = {}
+            
+            for key, field in field_map.items():
+                
+                text = field.text().replace(",", ".").strip()
+                
+                value = float(text) if text else 0.0
+                
+                converted[key] = self.format_price(value)
+            
+            return converted
+        
+        raw_prices = self.other_work_prices.model_dump()
+        
+        converted = {}
+        
+        for key, huf_value in raw_prices.items():
+            
+            value = self.convert_price(float(huf_value), "HUF", display_currency)
+            
+            converted[key] = self.format_price(value)
+        
+        return converted
+
+    def get_table_data(self) -> QuotationData:
+        
+        items = []
+        
+        enabled, surcharge_percent = self.get_surcharge_settings()
+        
+        multiplier = 1 + (surcharge_percent / 100) if enabled is True and surcharge_percent > 0 else 1.0
+        
+        input_currency, output_currency = self.get_currency_settings()
+        
+        source_currency = input_currency if input_currency is not None else "HUF"
+        
+        display_currency = output_currency if output_currency is not None else "HUF"
+        
+        currency_symbol = self.get_currency_symbol(display_currency)
+        
+        for row in range(self.work_table.rowCount()):
+            
+            name_item = self.work_table.item(row, 0)
+            
+            qty_item = self.work_table.item(row, 1)
+            
+            unit_item = self.work_table.item(row, 2)
+            
+            price_item = self.work_table.item(row, 3)
+            
+            if name_item is not None and qty_item is not None and \
+                unit_item is not None and price_item is not None:
+                
+                try:
+                    
+                    qty = float(qty_item.text().replace(",", "."))
+                    
+                except ValueError:
+                    
+                    qty = 0
+                    
+                qty_display = self.format_quantity(qty)
+                
+                price_text = price_item.text().replace("Ft", "").replace("€", "").replace("$", "").replace(" ", "").replace(",", ".")
+              
+                try:
+                    
+                    unit_price = float(price_text)
+                    
+                except ValueError:
+                    
+                    unit_price = 0
+                    
+                line_total = unit_price * qty * multiplier
+                
+                if source_currency != display_currency:
+                        
+                    line_total = self.convert_price(line_total, source_currency, display_currency)
+                    
+                price_display = f"{currency_symbol} {self.format_price(line_total)}"
+                
+                items.append(QuotationTableData(
+                    name = name_item.text(),
+                    quantity = qty_display,
+                    unit = unit_item.text(),
+                    price = price_display,
+                    line_total = line_total
+                ))
+                
+        client = ClientData(
+            name = self.existing_client_name.text() if self.client_tab_widget.currentIndex() == 1 else self.client_name.text(),
+            address = self.existing_client_address.text() if self.client_tab_widget.currentIndex() == 1 else self.client_address.text(),
+            country = self.existing_client_country.text() if self.client_tab_widget.currentIndex() == 1 else self.client_country.text(),
+            vat = self.existing_client_vat.text() if self.client_tab_widget.currentIndex() == 1 else self.client_vat.text()
+        )
+        
+        return QuotationData(
+            currency_symbol = currency_symbol,
+            client = client,
+            items = items
+        )
+    
+    def render_html(self, translator = None, translated_content: dict = None, order_number: str = None):
+    
+        if translator is None:
+            
+            translator = lambda x: x
     
         today = date.today()
         
         valid_until = today + timedelta(days = 7)
         
-        order_number = Markup(f"{today.strftime('%Y')}{2:04d}")
+        if order_number is None:
+            
+            order_number = self._preview_order_number
+        
+        order_number = Markup(order_number)
         
         svg_dir_path = os.path.join(os.path.dirname(sys.executable), "_internal/gui/static/assets/img/svg") \
             if getattr(sys, 'frozen', False) else os.path.join(os.path.dirname(__file__), "../../static/assets/img/svg")
@@ -376,43 +1170,228 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         cts_logo = self.svg_to_base64(os.path.join(svg_dir_path, "cts_logo.svg")) # gui\static\assets\img\svg\cts_logo.svg
         cred_logo = self.svg_to_base64(os.path.join(svg_dir_path, "credithworthiness_logo.svg")) # gui\static\assets\img\svg\credithworthiness_logo.svg
         
-        client = {
-            "name": self.client_name.text(),
-            "address": self.client_address.text(),
-            "country": self.client_country.text(),
-            "vat": self.client_vat.text()
-        }
+        quotation_data = self.get_table_data()
         
-        table_data = self.get_table_data()
+        total_price = sum(item.line_total for item in quotation_data.items)
+        
+        boat_name = self.boat_name.text().strip()
+        
+        description = self.work_description.toPlainText()
+        
+        information = self.additional_info.toPlainText()
+        
+        items = quotation_data.items
+        
+        if translated_content is not None:
+            
+            boat_name = translated_content.get(boat_name, boat_name)
+            
+            description = translated_content.get(description.strip(), description)
+            
+            information = translated_content.get(information.strip(), information)
+            
+            translated_items = []
+            
+            for item in items:
+                
+                translated_items.append(QuotationTableData(
+                    name = translated_content.get(item.name.strip(), item.name),
+                    quantity = item.quantity,
+                    unit = translated_content.get(item.unit.strip(), item.unit),
+                    price = item.price,
+                    line_total = item.line_total
+                ))
+            
+            items = translated_items
         
         html = self.quotation_template.render(
             cts_logo = cts_logo,
             cred_logo = cred_logo,
-            data_lenght = "less-than-six" if len(table_data) < 6 else "greater-than-six",
-            boat_name = self.boat_name.text().strip(),
+            data_lenght = "less-than-six" if len(items) < 6 else "greater-than-six",
+            boat_name = boat_name,
             order_number = order_number,
-            client = client,
-            data = table_data,
-            prices = self.other_work_prices.model_dump(),
-            description = Markup(self.work_description.toPlainText().replace("\n","<br>")),
-            information = Markup(self.additional_info.toPlainText().replace("\n","<br>")),
-            total_price = 1780,
+            client = quotation_data.client,
+            data = items,
+            prices = self._get_converted_prices(),
+            description = Markup(description.replace("\n","<br>")),
+            information = Markup(information.replace("\n","<br>")),
+            total_price = self.format_price(total_price),
+            currency_symbol = quotation_data.currency_symbol,
             current_date = Markup(today.strftime("%Y. %m. %d.")),
             valid_until_date = Markup(valid_until.strftime("%Y. %m. %d.")),
-            max_rows = len(table_data),
-            _ = lambda x: x
+            max_rows = len(items),
+            _ = translator
         )
         
         return html
     
+    def _extract_template_strings(self) -> list:
+        
+        template_source, _, _ = self.jinja_env.loader.get_source(self.jinja_env, "price_quotation.html")
+        
+        matches = re.findall(r'_\("([^"]+)"\)', template_source)
+        
+        return list(dict.fromkeys(matches))
+    
+    def _get_lang_dir(self) -> str:
+        
+        if getattr(sys, 'frozen', False):
+            
+            return os.path.join(os.path.dirname(sys.executable), "lang")
+        
+        return os.path.join(os.path.dirname(__file__), "../../lang")
+    
+    def _get_po_file_path(self, lang_code: str) -> str:
+        
+        lang_dir = self._get_lang_dir()
+        
+        os.makedirs(lang_dir, exist_ok = True)
+        
+        return os.path.join(lang_dir, f"{lang_code}.json")
+    
+    def _load_po_cache(self, lang_code: str) -> dict:
+        
+        po_path = self._get_po_file_path(lang_code)
+        
+        if os.path.exists(po_path):
+            
+            with open(po_path, "r", encoding = "utf-8") as f:
+                
+                return json.load(f)
+        
+        return {}
+    
+    def _save_po_cache(self, lang_code: str, translations: dict):
+        
+        po_path = self._get_po_file_path(lang_code)
+        
+        with open(po_path, "w", encoding = "utf-8") as f:
+            
+            json.dump(translations, f, ensure_ascii = False, indent = 2)
+        
+        self.log.debug("PO cache saved: %s" % po_path)
+    
+    def _collect_user_content_strings(self) -> list:
+        
+        strings = []
+        
+        boat = self.boat_name.text().strip()
+        
+        if boat != "":
+            
+            strings.append(boat)
+        
+        desc = self.work_description.toPlainText().strip()
+        
+        if desc != "":
+            
+            strings.append(desc)
+        
+        info = self.additional_info.toPlainText().strip()
+        
+        if info != "":
+            
+            strings.append(info)
+        
+        for row in range(self.work_table.rowCount()):
+            
+            name_item = self.work_table.item(row, 0)
+            
+            unit_item = self.work_table.item(row, 2)
+            
+            if name_item is not None and name_item.text().strip() != "":
+                
+                strings.append(name_item.text().strip())
+            
+            if unit_item is not None and unit_item.text().strip() != "":
+                
+                strings.append(unit_item.text().strip())
+        
+        return list(dict.fromkeys(strings))
+    
+    async def _call_openai_translate(self, lang_code: str, strings: list) -> dict:
+        
+        lang_name = Config.lang.lang_codes.get(lang_code, lang_code)
+        
+        prompt_text = json.dumps(strings, ensure_ascii = False)
+        
+        async with self._openai_lock:
+            
+            response = await self.openai.chat.completions.create(
+                model = "gpt-5.1",
+                messages = [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"The target language is: {lang_name} (code: {lang_code}). "
+                            "Translate the following Hungarian texts into this language. "
+                            "Respond only with a valid JSON object where the keys are the original Hungarian texts, "
+                            "and the values are the translated texts. No explanations, no additional text."
+                        )
+                    },
+                    {"role": "user", "content": prompt_text}
+                ],
+            )
+        
+        result = response.choices[0].message.content.strip()
+        
+        self.log.debug("Translation result for %s: %s" % (lang_code, result))
+        
+        cleaned = re.sub(r"^```json\s*", "", result)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+        
+        return json.loads(cleaned)
+    
+    async def _translate_template_strings(self, lang_code: str) -> dict:
+        
+        cache = self._load_po_cache(lang_code)
+        
+        template_strings = self._extract_template_strings()
+        
+        missing = [s for s in template_strings if s not in cache]
+        
+        if len(missing) > 0:
+            
+            self.log.debug("Translating %d template strings for %s" % (len(missing), lang_code))
+            
+            new_translations = await self._call_openai_translate(lang_code, missing)
+            
+            cache.update(new_translations)
+            
+            self._save_po_cache(lang_code, cache)
+        
+        else:
+            
+            self.log.debug("All template strings cached for %s" % lang_code)
+        
+        return cache
+    
+    async def _translate_user_content(self, lang_code: str) -> dict:
+        
+        user_strings = self._collect_user_content_strings()
+        
+        if len(user_strings) == 0:
+            
+            return {}
+        
+        self.log.debug("Translating %d user content strings for %s" % (len(user_strings), lang_code))
+        
+        return await self._call_openai_translate(lang_code, user_strings)
+    
     def prepare_dropwdown_currencies(self):
         
-        if len(self.dropdown_items) > 0:
+        all_currencies = ["HUF"] + sorted(self.available_currencies)
+        
+        self.currency_input_dropdown.clear()
+        self.currency_input_dropdown.addItem("-- Input currency --", None)
+        
+        for text in all_currencies:
             
-            self.currency_dropdown.clear()
-            self.currency_dropdown.addItem("")
+            self.currency_input_dropdown.addItem(text, text)
+        
+        self.currency_output_dropdown.clear()
+        self.currency_output_dropdown.addItem("-- No conversion --", None)
+        
+        for text in all_currencies:
             
-            for text in self.dropdown_items:
-                
-                self.currency_dropdown.addItem(text, text)
-
+            self.currency_output_dropdown.addItem(text, text)
