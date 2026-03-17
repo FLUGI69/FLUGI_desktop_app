@@ -93,7 +93,7 @@ class SelectBoatModal(QDialog, LoggerMixin):
             
             flag_emoji = self.country_flag_emoji(boat.flag if boat.flag is not None else "n.a")
             
-            display_text = f"{boat.name if boat.name is not None else "n.a"} {flag_emoji} – {boat.country if boat.country is not None else "n.a"} (MMSI: {boat.mmsi if boat.mmsi is not None else 'n.a.'})"
+            display_text = f"{boat.name if boat.name is not None else "n.a"} {flag_emoji} – (SHIP ID: {boat.ship_id if boat.ship_id is not None else "n.a"}), (MMSI: {boat.mmsi if boat.mmsi is not None else 'n.a.'})"
             
             self.combo_box.addItem(display_text, boat)
 

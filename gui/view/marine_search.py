@@ -33,6 +33,7 @@ from playwright.async_api import expect, BrowserContext, Page, TimeoutError, Loc
 
 from config import Config
 from utils.logger import LoggerMixin
+from .admin.custom.line_edit import SearchLineEdit
 from services.marine_traffic_search_cache import MarineTrafficCacheService
 from utils.dc.marine_traffic.search_data import MarineTrafficData
 from utils.dc.marine_traffic.vessel_position import VesselPosition
@@ -131,7 +132,7 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
         title_label.setFixedHeight(35)
         title_label.setMaximumWidth(380)
         
-        self.input_field = QLineEdit()
+        self.input_field = SearchLineEdit(btn_callback = self.__on_btn_clicked)
         self.input_field.setObjectName("BoatSearchInput")
         self.input_field.setPlaceholderText("Search...")
         self.input_field.setFixedHeight(35)
@@ -507,7 +508,8 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
                             )
                         )
                         
-                        nearest_harbor, distance_km, nearest_name = self.overpass_api.get_nearest_harbor(
+                        nearest_harbor, distance_km, nearest_name = await asyncio.to_thread(
+                            self.overpass_api.get_nearest_harbor,
                             lat = vessel_position.lat,
                             lon = vessel_position.lon
                         )

@@ -22,6 +22,7 @@ from utils.logger import LoggerMixin
 from utils.scraping import WebScraper
 from utils.dc.ship_info import ShipInfo
 from .tables.mahart_ports import MahartPortsTable
+from .admin.custom.line_edit import SearchLineEdit
 from .modal.confirm_action import ConfirmActionModal
 from .modal.select_boat import SelectBoatModal
 from utils.dc.mahart_ports.selected_boats import SelectedBoatData
@@ -80,7 +81,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
         title_label.setFixedHeight(35)
         title_label.setMaximumWidth(380)
         
-        self.input_field = QLineEdit()
+        self.input_field = SearchLineEdit(btn_callback = self.__on_btn_clicked)
         self.input_field.setObjectName("BoatSearchInput")
         self.input_field.setPlaceholderText("Search...")
         self.input_field.setFixedHeight(35)
@@ -204,6 +205,10 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
         
         finally:
             
+            if idx == 1:
+                
+                self.mahart_ports_table.uncheck_all()
+           
             self.spinner.hide()
 
     async def __search_mahart(self) -> list[ShipInfo]:
@@ -354,7 +359,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
                         
                         self.confirm_action_modal.set_action_message(confirm_text)
                 
-                        if self.confirm_action_modal.exec() != QDialog.DialogCode.Accepted:
+                        if not await self.confirm_action_modal.exec_async():
                             
                             self.spinner.hide()
                             

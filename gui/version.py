@@ -82,7 +82,7 @@ if getattr(sys, "frozen", False):
     
 else:
     
-    VERSION = (0, 1, 11, 0)
+    VERSION = (0, 1, 11, 1)
     VERSION_STR = "dev"
 
 COMPANY           = "Example Company Ltd."
