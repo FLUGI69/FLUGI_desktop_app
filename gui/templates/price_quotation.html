@@ -348,7 +348,7 @@
                 {% if i <= data|length %} 
                 <tr>
                     <td>{{ data[i-1].name }}</td>
-                    <td>{{ data[i-1].qty }}</td>
+                    <td>{{ data[i-1].quantity }}</td>
                     <td>{{ data[i-1].unit }}</td>
                     <td>{{ data[i-1].price }}</td>
                 </tr>
@@ -360,12 +360,12 @@
                     <td></td>
                 </tr>
                 {% endif %}
-                {% endfor %}
-                <tr class="total-row">
-                    <td></td>
-                    <td colspan="2"><strong>{{ _("Total") }}</strong></td>
-                    <td><strong>€ {{ total_price }}</strong></td>
-                </tr>
+            {% endfor %}
+            <tr class="total-row">
+                <td></td>
+                <td colspan="2"><strong>{{ _("Total") }}</strong></td>
+                <td><strong>{{ currency_symbol }} {{ total_price }}</strong></td>
+            </tr>
         </tbody>
     </table>
     <div class="devider"></div>
@@ -376,39 +376,39 @@
     <ul class="other-pricing-list {{ data_lenght }}">
         <li>
             <span class="label">{{ _("Work during working hours:") }}</span>
-            <span class="value {{ data_lenght }}">€80 {{ _("/ person / hour") }}</span>
+            <span class="value {{ data_lenght }}">{{ currency_symbol }} {{ prices.work_during_hours }} {{ _("/ person / hour") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Outside working hours & Saturdays:") }}</span>
-            <span class="value">€120{{ _("/ person / hour") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.work_outside_hours }} {{ _("/ person / hour") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Sundays & public holidays +100%:") }}</span>
-            <span class="value">€160 {{ _("/ person / hour") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.work_sundays }} {{ _("/ person / hour") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Travel within Budapest:") }}</span>
-            <span class="value">€65 {{ _("/ occasion") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.travel_budapest }} {{ _("/ occasion") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Travel outside Budapest / abroad:") }}</span>
-            <span class="value">€1.2 {{ _("/ km") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.travel_outside }} {{ _("/ km") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Travel time:") }}</span>
-            <span class="value">€40 {{ _("/ person / hour") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.travel_time }} {{ _("/ person / hour") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Travel time outside working hours & Saturdays +50%:") }}</span>
-            <span class="value">€60 {{ _("/ person / hour") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.travel_time_outside }} {{ _("/ person / hour") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Travel time Sundays & public holidays +100%:") }}</span>
-            <span class="value">€80 {{ _("/ person / hour") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.travel_time_sundays }} {{ _("/ person / hour") }}</span>
         </li>
         <li>
             <span class="label">{{ _("Accommodation:") }}</span>
-            <span class="value">€100 {{ _("/ person / night") }}</span>
+            <span class="value">{{ currency_symbol }} {{ prices.accommodation }} {{ _("/ person / night") }}</span>
         </li>
     </ul>
     <div class="credithworthiness {{ data_lenght }}">

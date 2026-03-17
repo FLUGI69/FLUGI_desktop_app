@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from utils.logger import LoggerMixin
 from utils.enums.quantity_range import QuantityRange
+from config import Config
 
 if t.TYPE_CHECKING:
     
@@ -33,7 +34,7 @@ class UtilityCalculator(LoggerMixin):
         
         self.available_currencies = [c for c in self.currencies if c in self.currencies_rates]
         
-        self.current_date = datetime.now(ZoneInfo("Europe/Budapest")).date()
+        self.current_date = datetime.now(Config.time.timezone_utc).date()
         
     def arithmetic_decimal(
         self,

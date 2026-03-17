@@ -9,7 +9,7 @@ class Config(object):
         is_enabled = False
         host = "0.0.0.0"
         port = 0000
-        namespace = "/axample"
+        namespace = "/example"
         auth_token = ""
         excluded_models = {"", ""}
         folder = "gui/utils/dc/websocket"
@@ -419,6 +419,56 @@ class Config(object):
             }
         """
         
+    class lang:
+        
+        lang_codes = {
+            "HU": "Magyar",
+            "ENG": "Angol",
+            "GER": "Német",
+            "FRA": "Francia",
+            "ITA": "Olasz",
+            "ESP": "Spanyol",
+            "NLD": "Holland",
+            "POL": "Lengyel",
+            "ROU": "Román",
+            "CZE": "Cseh",
+            "SVK": "Szlovák",
+            "HRV": "Horvát",
+            "SRB": "Szerb",
+            "BGR": "Bolgár",
+            "GRC": "Görög",
+            "TUR": "Török",
+            "RUS": "Orosz",
+            "PRT": "Portugál",
+            "DNK": "Dán",
+            "SWE": "Svéd",
+            "NOR": "Norvég",
+            "FIN": "Finn",
+        }
+        
+    class quotation:
+        
+        currency_symbols = {
+            "HUF": "Ft",
+            "EUR": "€",
+            "USD": "$",
+            "GBP": "£",
+            "CHF": "CHF",
+            "JPY": "¥",
+            "CZK": "Kč",
+            "PLN": "zł",
+            "SEK": "kr",
+            "NOK": "kr",
+            "DKK": "kr",
+            "RON": "lei",
+            "HRK": "kn",
+            "RSD": "din",
+            "TRY": "₺",
+            "AUD": "A$",
+            "CAD": "C$",
+            "CNY": "¥",
+        }
+        
     class html_setup:
         
         class admin_storage_content:
@@ -426,8 +476,8 @@ class Config(object):
             header = """
             <div style='font-size:12pt; text-align:left; margin-bottom:10px;'>
                 Example Company Ltd.<br>
-                1234 City Example street 11.<br>
-                Example City, Country<br>
+                1234 City Street 11.<br>
+                Branch: 1234 City Street 210.
             </div>
             """
             title = "<h2 style='text-align:center; margin-bottom: 5px;'>MACHINES AND EQUIPMENT INVENTORY</h2>"
@@ -499,6 +549,7 @@ class Config(object):
         # Backward-compatible alias used across the project.
         timezone_utc = timezone_local
         timeformat = "%Y-%m-%d %H:%M:%S"
+        timestamp_format = "%Y%m%d%H%M%S%f"
         
     class ip_info:
         
@@ -517,7 +568,7 @@ class Config(object):
         
         class paths:
             
-            logo = "gui/static/assets/img/cts_logo.png"
+            logo = "gui/static/assets/img/svg/solutions_not_promises.svg"
             google_icon = "gui/static/assets/img/google_logo.png"
             
         class credentials:
@@ -536,7 +587,7 @@ class Config(object):
             
     class img:
         
-        main_window_bg_path = ""
+        main_window_bg_path = "gui/static/assets/img/svg/solutions_not_promises.svg"
         
     class gif:
         
@@ -684,5 +735,7 @@ class Config(object):
                
         class overpass:
             
-            url = "https://overpass.kumi.systems/api/interpreter"
-            delta = 0.5    
+            urls = [
+                "https://overpass-api.de/api/interpreter",
+                "https://overpass.kumi.systems/api/interpreter",
+            ]

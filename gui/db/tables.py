@@ -18,6 +18,7 @@ from sqlalchemy.orm import relationship, foreign
 
 from utils.enums.ship_type_enum import ShipTypeEnum
 from utils.enums.storage_item_type_enum import StorageItemTypeEnum
+from utils.enums.tax_number_type_enum import TaxNumberTypeEnum
 from db.db import MySQLDatabase
 
 TableBase = MySQLDatabase.declarative_base("example_db")
@@ -167,7 +168,8 @@ class example_db:
         work_status = relationship("work_status", back_populates = "notes")
     
     class other_work_prices(TableBase):
-        
+        """You have to set the prices for the price quotation in this table, otherwise the price quotation will not work and will throw an error, 
+        because it requires a record to be present in this table to retrieve the prices for the price quotation. Defalt value is Hungarian Forint (HUF)."""
         id = Column(BigInteger, autoincrement = True, primary_key = True)
         
         work_during_hours = Column(DECIMAL(12, 2), nullable = True, comment = "Work during regular hours")
@@ -202,7 +204,7 @@ class example_db:
         
         tax_number_raw = Column(String(64), nullable = True) 
         
-        tax_number_type = Column(String(16), nullable = False)
+        tax_number_type = Column(Enum(TaxNumberTypeEnum, native_enum = False), nullable = False)
         
         created_at = Column(DateTime, default = func.now(), nullable = False, comment = "Creation timestamp")
         

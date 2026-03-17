@@ -68,13 +68,29 @@ class OverpassAPI(LoggerMixin):
         """
         try:
             
-            response = requests.post(
-                Config.marine_traffic.overpass.url, 
-                data = {"data": query_params}, 
-                timeout = 30
-            )
+            response = None
             
-            if response.status_code == 200:
+            for url in Config.marine_traffic.overpass.urls:
+                
+                try:
+                    
+                    response = requests.post(
+                        url, 
+                        data = {"data": query_params}, 
+                        timeout = 15
+                    )
+                    
+                    if response.status_code == 200:
+                        
+                        break
+                        
+                except requests.exceptions.RequestException as req_err:
+                    
+                    self.log.warning("Overpass request failed for %s: %s" % (url, str(req_err)))
+                    
+                    continue
+            
+            if response is not None and response.status_code == 200:
            
                 data = response.json()
                 

@@ -30,6 +30,8 @@ class AdminView(QWidget, LoggerMixin):
     log: logging.Logger
 
     refresh_todo = pyqtSignal(bool)
+    
+    refresh_other_work_prices = pyqtSignal()
 
     def __init__(self,
         main_window: 'MainWindow'
@@ -86,7 +88,7 @@ class AdminView(QWidget, LoggerMixin):
         self.sidebar.menu6.clicked.connect(lambda: self.__set_content(self.get_tenants_content()))
         self.sidebar.menu7.clicked.connect(lambda: self.__set_content(RentalHistoryContent(self)))
         self.sidebar.menu8.clicked.connect(lambda: self.__set_content(LoginHistoryContent(self)))
-        self.sidebar.menu9.clicked.connect(lambda: self.__set_content(PriceQuotationContent(self)))
+        self.sidebar.menu9.clicked.connect(self.__open_quotation_content)
         
         self.__set_content(self.get_calendar_content())
         
@@ -186,6 +188,14 @@ class AdminView(QWidget, LoggerMixin):
     def get_current_content(self) -> QWidget | None:
         
         return self.stack.currentWidget()
+    
+    def __open_quotation_content(self):
+        
+        content = PriceQuotationContent(self)
+        
+        content.refresh_other_work_prices.connect(self.refresh_other_work_prices.emit)
+        
+        self.__set_content(content)
     
     def __set_content(self, new_view: QWidget):
 

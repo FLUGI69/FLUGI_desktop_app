@@ -248,7 +248,7 @@ class AdminStorageContent(QWidget, LoggerMixin):
                 
                 os.makedirs(export_dir)
             
-            current_timestamp = datetime.now(Config.time.timezone_utc).strftime("%Y%m%d%H%M%S%f")
+            current_timestamp = datetime.now(Config.time.timezone_utc).strftime(Config.time.timestamp_format)
             
             pdf_file = os.path.join(export_dir, f"storage_list_{current_timestamp}.pdf")
             
@@ -318,7 +318,7 @@ class AdminStorageContent(QWidget, LoggerMixin):
                 
                 os.makedirs(export_dir)
             
-            current_timestamp = datetime.now(Config.time.timezone_utc).strftime("%Y%m%d%H%M%S%f")
+            current_timestamp = datetime.now(Config.time.timezone_utc).strftime(Config.time.timestamp_format)
             
             xlsx_file = os.path.join(export_dir, f"konyveles_{current_timestamp}.xlsx")
             
