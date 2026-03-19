@@ -103,7 +103,7 @@ class update_tenant_by_id(AsyncQueryBase):
                     
                 if changes_detected == False:
                     
-                    raise Exception("No changes detected — unexpected situation.")
+                    raise Exception("No changes detected - unexpected situation.")
     
     def __resolve_period(self,
         now: datetime,

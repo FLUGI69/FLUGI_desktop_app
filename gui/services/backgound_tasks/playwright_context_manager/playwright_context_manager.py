@@ -35,13 +35,21 @@ class PlayWrightContextManager(LoggerMixin):
         
         self._playwright = await self._manager.__aenter__()
         
-        self._playwright_task = asyncio.current_task()
+        self._playwright_task = self.app.loop.create_task(self.playwright_session())
         
-        if self._playwright_task is not None:
-            
-            self.app._bg_tasks.append(self._playwright_task)
+        self.app._bg_tasks.append(self._playwright_task)
         
         return self._playwright
+    
+    async def playwright_session(self):
+        
+        try:
+            
+            await asyncio.Event().wait()
+            
+        except asyncio.CancelledError:
+            
+            pass
     
     async def start(self) -> Playwright:
         
@@ -73,4 +81,16 @@ class PlayWrightContextManager(LoggerMixin):
                     
                     self._playwright = None
                     
-                    self._playwright_task = None
+                    if self._playwright_task is not None:
+                        
+                        self._playwright_task.cancel()
+                        
+                        try:
+                            
+                            await self._playwright_task
+                            
+                        except asyncio.CancelledError:
+                            
+                            pass
+                        
+                        self._playwright_task = None

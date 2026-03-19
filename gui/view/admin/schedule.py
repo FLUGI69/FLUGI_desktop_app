@@ -150,6 +150,8 @@ class ScheduleContent(QWidget, LoggerMixin):
                             mmsi = row.mmsi,
                             callsign = row.callsign,
                             imo = row.imo,
+                            reported_destination = None,
+                            matched_destination = None
                         ) for row in query_results
                     ]
                     

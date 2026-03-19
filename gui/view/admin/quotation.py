@@ -67,8 +67,6 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         self.jinja_env = admin_view.main_window.app.jinja_env
         
-        self.other_work_prices = admin_view.main_window.other_work_prices
-        
         self.openai = admin_view.main_window.app.openai
         
         self._openai_lock = admin_view.main_window.app.openapi_lock
@@ -698,11 +696,11 @@ class PriceQuotationContent(QWidget, LoggerMixin):
     
     def _load_current_prices(self):
         
-        prices = self.other_work_prices.model_dump()
+        prices = self.admin_view.main_window.other_work_prices.model_dump()
         
         _, output_currency = self.get_currency_settings()
         
-        display_currency = output_currency if output_currency is not None else "HUF"
+        display_currency = output_currency if output_currency is not None else "EUR"
         
         field_map = {
             "work_during_hours": self.price_work_during_hours,
@@ -718,9 +716,9 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         for key, field in field_map.items():
             
-            huf_value = float(prices[key])
+            eur_value = float(prices[key])
             
-            converted = self.convert_price(huf_value, "HUF", display_currency)
+            converted = self.convert_price(eur_value, "EUR", display_currency)
             
             field.setText(str(round(converted, 2)))
     
@@ -728,7 +726,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         _, output_currency = self.get_currency_settings()
         
-        display_currency = output_currency if output_currency is not None else "HUF"
+        display_currency = output_currency if output_currency is not None else "EUR"
         
         field_map = {
             "work_during_hours": self.price_work_during_hours,
@@ -744,7 +742,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         try:
             
-            huf_values = {}
+            eur_values = {}
             
             for key, field in field_map.items():
                 
@@ -752,18 +750,18 @@ class PriceQuotationContent(QWidget, LoggerMixin):
                 
                 value = float(text) if text else 0.0
                 
-                huf_values[key] = Decimal(str(round(self.convert_price(value, display_currency, "HUF"), 2)))
+                eur_values[key] = Decimal(str(round(self.convert_price(value, display_currency, "EUR"), 2)))
             
             await queries.update_other_work_prices(
-                huf_values["work_during_hours"],
-                huf_values["work_outside_hours"],
-                huf_values["work_sundays"],
-                huf_values["travel_budapest"],
-                huf_values["travel_outside"],
-                huf_values["travel_time"],
-                huf_values["travel_time_outside"],
-                huf_values["travel_time_sundays"],
-                huf_values["accommodation"]
+                eur_values["work_during_hours"],
+                eur_values["work_outside_hours"],
+                eur_values["work_sundays"],
+                eur_values["travel_budapest"],
+                eur_values["travel_outside"],
+                eur_values["travel_time"],
+                eur_values["travel_time_outside"],
+                eur_values["travel_time_sundays"],
+                eur_values["accommodation"]
             )
             
             self.refresh_other_work_prices.emit()
@@ -1062,9 +1060,9 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         converted = {}
         
-        for key, huf_value in raw_prices.items():
+        for key, eur_value in raw_prices.items():
             
-            value = self.convert_price(float(huf_value), "HUF", display_currency)
+            value = self.convert_price(float(eur_value), "EUR", display_currency)
             
             converted[key] = self.format_price(value)
         

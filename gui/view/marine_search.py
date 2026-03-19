@@ -1,7 +1,6 @@
 ﻿import hashlib
 from functools import partial
 import re
-import sys
 from qasync import asyncSlot
 import typing as t
 from datetime import datetime
@@ -24,7 +23,8 @@ from PyQt6.QtWidgets import (
     QFrame,
     QTextEdit,
     QSizePolicy,
-    QListWidgetItem
+    QListWidgetItem,
+    QDialog
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QFont, QPixmap
@@ -41,6 +41,7 @@ from .modal.confirm_action import ConfirmActionModal
 from .modal.map import MapModal
 from db import queries
 from routes.api.overpass import OverpassAPI
+from routes.api.async_playwright import AsyncPlaywright 
 from utils.handlers.widgets.info_bar import InfoBar
 
 if t.TYPE_CHECKING:
@@ -69,20 +70,14 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
         
         self.confirm_action_modal = ConfirmActionModal(self)
         
-        self.marine_traffic_list: t.List[MarineTrafficData] = []
-        
         self.input_name = ""
-        
-        self.playwright = None
-        
-        self.browser_context: BrowserContext | None = None
-        
-        self.page: Page | None = None
-        
-        self.playwright_dir = Path(sys.executable).parent / "_internal" / "gui" / "playwright" \
-            if getattr(sys, 'frozen', False) else Path(Config.marine_traffic.playwright_dir)
-  
+
         self.info_bar = InfoBar()
+        
+        self.async_playwright = AsyncPlaywright(
+            playwright_manager = self.playwright_manager,
+            info_bar = self.info_bar
+        )
         
         self.__init_view()
         
@@ -104,10 +99,6 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
     def icon(name: str) -> QIcon:
   
         return QIcon(os.path.join(Config.icon.icon_dir, name))   
-
-    def random_viewport(self):
-        
-        return random.choice(Config.marine_traffic.viewports)
 
     def set_top_section(self):
         
@@ -216,115 +207,6 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
         finally:
             
             self.spinner.hide()
-    
-    def make_dir(self):
-        
-        self.playwright_dir.mkdir(parents = True, exist_ok = True)
-        
-        profiles_dir = self.playwright_dir / "playwright_profiles"
-        
-        profiles_dir.mkdir(parents = True, exist_ok = True)
-
-        self.user_agent = random.choice(Config.marine_traffic.user_agents)
-        
-        self.accept_lang = random.choice(Config.marine_traffic.langs)
-        
-        profile_hash = hashlib.md5(f"{self.user_agent}|{self.accept_lang}".encode()).hexdigest()
-
-        self.profile_dir = profiles_dir / profile_hash
-        
-        self.profile_dir.mkdir(parents = True, exist_ok = True)
-          
-    async def build_browser_context(self):
-        
-        self.make_dir()
-    
-        width, height = self.random_viewport()
-
-        self.info_bar.addText(">>> Starting search on Marine Traffic with Playwright Chromium...")
-
-        self.playwright = await self.playwright_manager.start()
-        
-        self.browser_context = await self.playwright.chromium.launch_persistent_context(
-            executable_path = str(self.playwright_dir / "chromium" / "chromium-1187" / "chrome-win" / "chrome.exe"),
-            user_data_dir = str(self.profile_dir),
-            headless = True,
-            viewport = {"width": width, "height": height},
-            user_agent = self.user_agent,
-            extra_http_headers = {"Accept-Language": self.accept_lang},
-            ignore_https_errors = True,
-            args = ["--start-maximized","--disable-blink-features=AutomationControlled"],
-        )
-        
-    async def handle_cookies_banner(self, timeout: int = 4000):
-        """
-        Robustly handles GDPR / cookie consent popup.
-        Works with iframe or shadow DOM.
-        """
-        try:
-            
-            popup_found = False
-
-            popup_locator = self.page.locator("#qc-cmp2-ui")
-            
-            try:
-                
-                await popup_locator.wait_for(timeout = timeout)
-                
-                popup_found = True
-                
-            except TimeoutError:
-                
-                popup_found = False
-
-            if popup_found is False:
-                
-                for frame in self.page.frames:
-                    
-                    popup_locator = frame.locator("#qc-cmp2-ui")
-                    
-                    try:
-                        
-                        await popup_locator.wait_for(timeout = timeout)
-                        
-                        self.log.debug("Consent popup found in iframe: %s" % frame.url)
-                        
-                        popup_found = True
-                        
-                        break
-                    
-                    except TimeoutError:
-                        continue
-
-            if popup_found is False:
-                
-                self.log.debug("No consent popup appeared on the page")
-                
-                return
-
-            agree_button = popup_locator.locator("button.css-1yp8yiu")
-            
-            self.info_bar.addText("🔔 Cookie consent popup detected, trying to accept...")
-            
-            try:
-                
-                await agree_button.click(timeout = timeout)
-                
-                self.log.info("Consent dialog detected and 'AGREE' button clicked successfully")
-                
-                self.info_bar.addText("✅ Cookie consent elfogadva")
-                
-            except TimeoutError:
-                
-                self.log.debug("Consent dialog exists, but 'AGREE' button was not found or clickable")
-
-        except Exception as e:
-            
-            self.log.exception("Exception occurred while handling consent dialog: %s" % str(e))
-
-    # async def click_live_map_button(self, page: Page, result: MarineTrafficData):
-        
-        # await button.click()
         
     async def populate_results_list(self, 
         number_of_items: int,
@@ -457,7 +339,7 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
 
         if marine_traffic_data is not None and marine_traffic_data.view_on_map_href is not None:
             
-            if self.page is not None:
+            if self.async_playwright.page is not None:
                 
                 view_on_map_url = Config.marine_traffic.base_url + marine_traffic_data.view_on_map_href
                 
@@ -469,14 +351,14 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
                 
                 self.log.debug("Navigating to Marine Traffic 'View on Map' URL: %s" % view_on_map_url)
                 
-                response = await self.page.goto(
+                response = await self.async_playwright.page.goto(
                     url = view_on_map_url, 
                     wait_until = "domcontentloaded"
                 )
                 
                 if response.status == 200:
                     
-                    await self.page.wait_for_selector("body")
+                    await self.async_playwright.page.wait_for_selector("body")
 
                     self.log.info("View on map of %s[%d] is opened" % (
                         marine_traffic_data.ship_name if marine_traffic_data.ship_name is not None else "Unknown",
@@ -484,7 +366,7 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
                         )
                     )
                     
-                    async with self.page.expect_response(
+                    async with self.async_playwright.page.expect_response(
                         lambda response: f"getvesseljson/shipid:{marine_traffic_data.ship_id}" in response.url
                         ) as response_info:
                         
@@ -578,7 +460,7 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
         
         if marine_traffic_data is not None and marine_traffic_data.more_deatails_href is not None:
             
-            if self.page is not None:
+            if self.async_playwright.page is not None:
                 
                 more_details_url = Config.marine_traffic.target_uri + marine_traffic_data.more_deatails_href
                 
@@ -590,7 +472,7 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
                 
                 self.log.debug("Navigating to Marine Traffic URL: %s" % more_details_url)
                 
-                response = await self.page.goto(
+                response = await self.async_playwright.page.goto(
                     url = more_details_url, 
                     wait_until = "domcontentloaded"
                 )
@@ -604,6 +486,16 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
                         marine_traffic_data.ship_id if marine_traffic_data.ship_id is not None else "Unknown"
                         )
                     )
+                    
+                    field_label = {
+                        "flag": "Flag",
+                        "mmsi": "MMSI",
+                        "callsign": "Call sign",
+                        "imo": "IMO",
+                        "type_name": "General vessel type",
+                        "reported_destination": "Reported destination",
+                        "matched_destination": "Matched destination",
+                    }
 
                     missing_datas = [field for field, value in marine_traffic_data.model_dump().items() if value is None]
                     # print(missing_datas)  
@@ -613,10 +505,15 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
                         if len(missing_datas) > 0: 
                             
                             for data in missing_datas:
+                                                                
+                                if data == "id":
+                                    continue
+                                
+                                label = field_label.get(data, data)
                                 
                                 try:
                                    
-                                    locator = self.page.locator(f"text=/.*{data}.*/i").locator("xpath=..")
+                                    locator = self.async_playwright.page.locator(f"th:text-is('{label}')").locator("xpath=following-sibling::td")
                                     
                                     text_value = await locator.inner_text()
                                     
@@ -651,334 +548,82 @@ class MarineTrafficSearchView(QWidget, LoggerMixin):
                             )
                         )
                         
-                        await self._extract_reported_time_and_location()
-
-    async def _extract_reported_time_and_location(self):
+                        await self.async_playwright._extract_reported_time_and_location()
+                        
+                        self._update_list_item_row(list_item, marine_traffic_data)
+                        
+                        self._show_destination_dialog(marine_traffic_data)
+                        
+    def _update_list_item_row(self, list_item: QListWidgetItem, data: MarineTrafficData):
         
-        try:
-            
-            block_locator = self.page.locator("#vesselDetails_summarySection")
-
-            text = await block_locator.inner_text()
-
-            location_match = re.search(r"located in the (.*?) \(reported", text)
-            reported_match = re.search(r"reported (.*?)\)", text)
-
-            location = location_match.group(1).strip() if location_match is not None else None
-            reported = reported_match.group(1).strip() if reported_match is not None else None
-            
-            self.info_bar.addText("📍 Last position: %s - reported: %s" % (
-                location, 
-                reported
-                )
-            )
-            
-            self.log.debug("Extracted reported location and time: location = '%s', reported = '%s'" % (
-                location if location is not None else "Unknown",
-                reported if reported is not None else "Unknown"
-                )
-            )
-
-        except Exception as e:
-            
-            self.log.exception("Failed extracting summary location/time: %s" % str(e))
-                
-    async def __pharse_list_item(self, list_item: Locator):
+        list_item.setData(Qt.ItemDataRole.UserRole, data)
         
-        try:
+        container = self.search_result_list.itemWidget(list_item)
+        
+        if container is None:
+            return
+        
+        layout = container.layout()
+        
+        label_fields = [
+            (1, data.ship_name),
+            (2, str(data.ship_id) if data.ship_id is not None else "N/A"),
+            (3, data.type_name if data.type_name is not None else "N/A"),
+            (4, str(data.mmsi) if data.mmsi is not None else "N/A"),
+            (5, str(data.imo) if data.imo is not None else "N/A"),
+            (6, data.callsign if data.callsign is not None else "N/A"),
+        ]
+        
+        widget_index = 0
+        
+        for i in range(layout.count()):
             
-            a_tags = await list_item.locator("a").all()
-
-            a_tag = None
-            href_value = None
-            view_on_map_href = None
-            ship_id = None
-
-            if len(a_tags) > 0:
-      
-                a_tag = a_tags[0]
+            item = layout.itemAt(i)
+            widget = item.widget() if item is not None else None
+            
+            if widget is not None and isinstance(widget, QLabel):
                 
-                href_value = await a_tag.get_attribute("href")
-                
-                if href_value is not None:
+                for label_idx, value in label_fields:
                     
-                    ship_id_match = re.search(r"shipid:(\d+)", href_value)
-                    
-                    if ship_id_match is not None:
+                    if widget_index == label_idx:
                         
-                        ship_id = ship_id_match.group(1)
-                        
-                    else:
-                        
-                        ship_id = None
-
-                if len(a_tags) > 1:
-                    
-                    view_on_map_href = await a_tags[1].get_attribute("href")
-
-            if a_tag is None:
+                        widget.setText(value if value is not None else "N/A")
                 
-                a_tag = list_item
-            
-            h5_elements = await a_tag.locator("h5").all()
-            
-            h5_text = await h5_elements[0].inner_text() if len(h5_elements) > 0 else ""
-            
-            ship_name_cleaned = re.sub(r"(\(.*?\)|\[.*?\])", "", h5_text).strip()
-
-            flag_spans = await a_tag.locator("span[role='img']").all()
-            
-            flag_value = None
-            
-            if len(flag_spans) > 0:
-                
-                flag_attr = await flag_spans[0].get_attribute("aria-label")
-                
-                if flag_attr is not None:
-                    
-                    flag_value = flag_attr.lower()
-
-            p_elements = await a_tag.locator("p").all()
-            
-            info_text = await p_elements[0].inner_text() if len(p_elements) > 0 else ""
-
-            type_match = re.search(r"Type:\s*([^,]+)", info_text)
-            
-            type_value = type_match.group(1).strip() if type_match else None
-
-            mmsi_match = re.search(r"MMSI:\s*(\d+)", info_text)
-            
-            mmsi_value = mmsi_match.group(1) if mmsi_match else None
-
-            call_sign_match = re.search(r"Call Sign:\s*([\w\d]+)", info_text)
-            
-            call_sign_value = call_sign_match.group(1) if call_sign_match else None
-
-            imo_match = re.search(r"IMO:\s*(\d+)", info_text)
-            
-            imo_value = imo_match.group(1) if imo_match else None
-
-            ex_name_match = re.search(r"Ex Name:\s*(.+)", info_text, re.I)
-            
-            if ex_name_match is not None:
-                
-                ex_name_value = ex_name_match.group(1).strip()
-                
-                ship_name_cleaned = f"{ship_name_cleaned} Ex name: {ex_name_value}"
-
-            self.marine_traffic_list.append(MarineTrafficData(
-                id = None,
-                ship_name = ship_name_cleaned,
-                more_deatails_href = href_value,
-                view_on_map_href = view_on_map_href,
-                ship_id = int(ship_id) if ship_id is not None else None,
-                type_name = type_value,
-                flag = flag_value,
-                mmsi = int(mmsi_value) if mmsi_value is not None else None,
-                call_sign = call_sign_value,
-                imo = int(imo_value) if imo_value is not None else None
-                )
-            )
-
-        except Exception as e:
-            
-            self.log.exception("Error parsing list item: %s" % str(e))
+                widget_index += 1
     
-    async def handle_searching(self, 
-        ship_name: str,
-        timeout: int = 5000
-        ):
+    def _show_destination_dialog(self, data: MarineTrafficData):
         
-        try:
-
-            toolbar_input = self.page.locator("input.MuiInputBase-input")
-            
-            await toolbar_input.wait_for(state = "visible", timeout = timeout)
-            
-            await toolbar_input.click()
-
-            await toolbar_input.fill(ship_name)
-            
-            await toolbar_input.press("Enter")
-
-            self.info_bar.addText("🔍 Search started for ship: %s" % ship_name)
-
-            results_container = self.page.locator("div.MuiContainer-root").filter(has = self.page.locator("div.MuiListItem-root"))
-    
-            await results_container.wait_for(state = "visible", timeout = timeout)
-            
-            self.marine_traffic_list = []
-            
-            await self.collect_results(results_container, timeout = timeout)
-            
-            self.info_bar.addText("Finished search: found %d results for name '%s' <<<" % (
-                len(self.marine_traffic_list),
-                self.input_name
-                )
-            )
-            
-            if len(self.marine_traffic_list) > 0:
-                
-                await self.populate_results_list(
-                    number_of_items = len(self.marine_traffic_list),
-                    marine_traffic_list = self.marine_traffic_list
-                )
-            
-        except TimeoutError:
-            
-            self.info_bar.addText("ℹ️ No results found or results did not load in time")
-            
-            self.log.warning("No search results found or they did not load in time")
-            
-        except Exception as e:
-            
-            self.info_bar.addText("❌ Error while searching ship: %s" % str(e))
-            
-            self.log.exception("Error during ship search: %s" % str(e))
-    
-    async def collect_results(self, results_container: Locator, timeout: int = 1500):
-        """
-        Collects and parses all paginated list items from the results container.
-        Calls __pharse_list_item() for each element on each page.
-        """
+        reported = data.reported_destination if data.reported_destination is not None else "N/A"
+        matched = data.matched_destination if data.matched_destination is not None else "N/A"
         
-        try:
-            pagination = results_container.locator("nav[aria-label='pagination navigation']")
-            
-            try:
-                await pagination.wait_for(state = "visible", timeout = timeout)
-                
-            except TimeoutError:
-                
-                self.log.info("No pagination detected -> collecting single page results")
-                
-                list_items = await results_container.locator("div.MuiListItem-root").all()
-                
-                for item in list_items:
-                    
-                    await self.__pharse_list_item(item)
-                    
-                return
-
-            self.log.info("Pagination detected -> collecting paginated results")
-
-            page_buttons = await pagination.locator("button.MuiPaginationItem-page").all()
-            
-            total_pages = len(page_buttons)
-            
-            self.log.debug("Total pages detected: %d" % (total_pages))
-
-            for target_page in range(1, total_pages + 1):
-                
-                pagination = results_container.locator("nav[aria-label='pagination navigation']")
-                
-                page_btn = pagination.locator("button.MuiPaginationItem-page", has_text = str(target_page))
-
-                try:
-                    
-                    await expect(page_btn).to_have_attribute("aria-current", "page", timeout = 800)
-                    
-                    self.log.debug("Already on page %d", target_page)
-                    
-                except AssertionError:
-                    
-                    prev_first_text = await results_container.locator("div.MuiListItem-root").first.text_content()
-                    
-                    await page_btn.wait_for(state = "visible", timeout = timeout)
-                   
-                    await page_btn.click()
-
-                    await expect(page_btn).to_have_attribute("aria-current", "page", timeout=timeout)
-
-                    try:
-                        
-                        await expect(results_container.locator("div.MuiListItem-root").first).not_to_have_text(prev_first_text, timeout = 1200)
-                    
-                    except Exception:
-                        
-                        self.log.debug("Content check skipped, page switched by aria-current.")
-
-                list_items = await results_container.locator("div.MuiListItem-root").all()
-                
-                self.log.debug("Found %d list items on page %d" % (
-                    len(list_items), 
-                    target_page
-                    )
-                )
-
-                for idx, list_item in enumerate(list_items, start = 1):
-                    
-                    try:
-                        await self.__pharse_list_item(list_item)
-                        
-                        self.log.debug("Parsed item %d on page %d" % (
-                            idx, 
-                            target_page
-                            )
-                        )
-                        
-                    except Exception as e:
-                        
-                        self.log.warning("Item parse failed on page %d: %s" % (
-                            target_page, 
-                            str(e)
-                            )
-                        )
-
-            self.log.info("Finished collecting %d pages of results" % total_pages)
-
-        except Exception as e:
-            
-            self.log.exception("Error collecting paginated results: %s" % (str(e)))
-
-    async def ensure_page(self) -> Page:
-        """
-        Ensures that the Playwright persistent browser context and page are usable.
-        Returns a Page object that is guaranteed to be alive.
-
-        - If the browser context is None, a new context and page will be created.
-        - If a page already exists but its URL is not "about:blank", the page will be closed
-        and the context rebuilt to ensure a clean page.
-        - This guarantees that every returned Page is in a clean state (about:blank)
-        suitable for fast searches.
-        - Any exceptions during page creation or context handling are caught, the context is
-        rebuilt, and a new Page is created.
+        dialog = QDialog(self)
+        dialog.setObjectName("ConfirmModal")
+        dialog.setWindowTitle("%s - Destination data" % (data.ship_name if data.ship_name is not None else "N/A"))
         
-        Returns:
-            Page -> usable Page object with URL set to about:blank
-        """
-        if self.browser_context is None:
+        layout = QHBoxLayout(dialog)
         
-            await self.build_browser_context()
+        reported_label = QLabel("Reported destination:\n%s" % reported)
+        reported_label.setStyleSheet(Config.styleSheets.label)
+        reported_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        try:
-            
-            self.page = self.browser_context.pages[0] if len(self.browser_context.pages) > 0 else await self.browser_context.new_page()
-
-            if self.page.url != "about:blank":
-                
-                await self.page.close()
-                
-                self.page = None
-                
-                raise Exception()
+        matched_label = QLabel("Matched destination:\n%s" % matched)
+        matched_label.setStyleSheet(Config.styleSheets.label)
+        matched_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        except Exception:
-            
-            self.page = None
-
-            try:
-                
-                await self.browser_context.close()
-                
-            except Exception:
-                pass
-            
-            await self.build_browser_context()
-            
-            self.page = self.browser_context.pages[0] if len(self.browser_context.pages) > 0 else await self.browser_context.new_page()
-           
-        return self.page
+        ok_btn = QPushButton("OK")
+        ok_btn.setObjectName("WorkBtn")
+        ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok_btn.setFixedHeight(35)
+        ok_btn.setFixedWidth(150)
+        ok_btn.clicked.connect(dialog.close)
+        
+        layout.addWidget(reported_label)
+        layout.setSpacing(20)
+        layout.addWidget(matched_label)
+        layout.setSpacing(20)
+        layout.addWidget(ok_btn)
+        
+        dialog.open()
   
     async def __search_marine(self):
         

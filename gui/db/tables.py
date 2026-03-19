@@ -169,7 +169,8 @@ class example_db:
     
     class other_work_prices(TableBase):
         """You have to set the prices for the price quotation in this table, otherwise the price quotation will not work and will throw an error, 
-        because it requires a record to be present in this table to retrieve the prices for the price quotation. Defalt value is Hungarian Forint (HUF)."""
+        because it requires a record to be present in this table to retrieve the prices for the price quotation. Default value is Euro (EUR)."""
+        
         id = Column(BigInteger, autoincrement = True, primary_key = True)
         
         work_during_hours = Column(DECIMAL(12, 2), nullable = True, comment = "Work during regular hours")

@@ -12,6 +12,8 @@ class MarineTrafficData(DataclassBaseModel):
     mmsi: t.Optional[int] = None
     callsign: t.Optional[str] = None
     imo: t.Optional[int] = None
+    reported_destination: t.Optional[str] = None
+    matched_destination: t.Optional[str] = None
     
 # class MarineTrafficData(DataclassBaseModel):
 #     ship_name: str
