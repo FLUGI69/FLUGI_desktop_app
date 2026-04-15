@@ -484,8 +484,6 @@ class OTPZipWorker(QObject, LoggerMixin):
                 except Exception as e:
                     
                     self.log.error("Failed to print PDF %s: %s" % (pdf_path, str(e)))
-                    
-            break
         
     def _extract_zip_with_password(self, zip_path: Path, output_dir: Path) -> None:
         
