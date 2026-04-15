@@ -154,7 +154,8 @@ class QtApplication(LoggerMixin):
         self.app.aboutToQuit.connect(self.__on_about_to_quit) # type: ignore[arg-type]
 
         signal.signal(signal.SIGINT, lambda *_: QCoreApplication.quit())
-            
+        signal.signal(signal.SIGTERM, lambda *_: QCoreApplication.quit())
+   
     def _handle_loop_exception(self, loop: asyncio.AbstractEventLoop, context: dict) -> None:
         
         try:

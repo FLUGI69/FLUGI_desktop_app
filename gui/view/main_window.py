@@ -68,6 +68,10 @@ class MainWindow(QMainWindow, LoggerMixin):
 
         super().__init__()
         
+        self._cache_clearing_in_progress = False
+        
+        self._close_requested = False
+        
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
@@ -135,6 +139,20 @@ class MainWindow(QMainWindow, LoggerMixin):
         
         asyncio.ensure_future(self.__select_other_work_prices())
         asyncio.ensure_future(self.__select_other_work_prices_hun())
+    
+    def closeEvent(self, event):
+        
+        if getattr(self, "_cache_clearing_in_progress", False):
+            
+            self._close_requested = True
+            
+            self.log.warning("Window close requested, waiting for cache clear to finish")
+            
+            event.ignore()
+            
+        else:
+            
+            super().closeEvent(event)
     
     @staticmethod
     def icon(name: str) -> QIcon:
@@ -859,88 +877,102 @@ class MainWindow(QMainWindow, LoggerMixin):
         
         self.log.info("Clearing all Redis cache -> BEGIN")
         
-        if self.reminder_worker is not None:
+        try:
             
-            self.reminder_worker.notify_cache_update_needed(None)
-        
-        if self.rental_worker is not None:
-            
-            self.rental_worker.notify_cache_update_needed(True)
-        
-        self.admin_view = self.get_admin_view()
-            
-        if self.admin_view is not None:
-            
-            admin_storage_content = self.admin_view.get_admin_storage_content()
-            
-            if admin_storage_content is not None:
+            self._cache_clearing_in_progress = True
+       
+            if self.reminder_worker is not None:
                 
-                await admin_storage_content.storage_cache.clear_cache(Config.redis.cache.storage.id)
-                
-                await admin_storage_content.load_cache_data(
-                    target = Config.redis.cache.storage.target,
-                    cache_id = Config.redis.cache.storage.id,
-                    exp = Config.redis.cache.storage.exp
-                )
-                
-                await admin_storage_content.storage_datatable_cache.clear_cache(Config.redis.cache.storage_items.id)
-
-                await admin_storage_content.load_cache_data(
-                    target = Config.redis.cache.storage_items.target,
-                    cache_id = Config.redis.cache.storage_items.id,
-                    exp = Config.redis.cache.storage_items.exp
-                )
-
-            admin_tenant_content = self.admin_view.get_tenants_content()
+                self.reminder_worker.notify_cache_update_needed(None)
             
-            if admin_tenant_content is not None:
+            if self.rental_worker is not None:
                 
-                await admin_tenant_content.tenant_datatable_cache.clear_cache(Config.redis.cache.tenants.id)
+                self.rental_worker.notify_cache_update_needed(True)
+            
+            self.admin_view = self.get_admin_view()
                 
-                await admin_tenant_content.load_cache_data(
-                    cache_id = Config.redis.cache.tenants.id,
-                    exp = Config.redis.cache.tenants.exp,
-                    update_rental_cache = False
-                )
+            if self.admin_view is not None:
+                
+                admin_storage_content = self.admin_view.get_admin_storage_content()
+                
+                if admin_storage_content is not None:
                     
-        storage_view = self.get_storage_view()
-        
-        if storage_view is not None:
-            
-            await storage_view.material_cache_service.clear_cache(Config.redis.cache.material.id)
-            
-            await storage_view.load_cache_data(
-                cache_id = Config.redis.cache.material.id, 
-                exp = Config.redis.cache.material.exp
-            )
-            
-            await storage_view.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
-            
-            await storage_view.load_cache_data(
-                cache_id = Config.redis.cache.tools.id, 
-                exp = Config.redis.cache.tools.exp
-            )
-            
-            await storage_view.devices_cache_service.clear_cache(Config.redis.cache.devices.id)
+                    await admin_storage_content.storage_cache.clear_cache(Config.redis.cache.storage.id)
+                    
+                    await admin_storage_content.load_cache_data(
+                        target = Config.redis.cache.storage.target,
+                        cache_id = Config.redis.cache.storage.id,
+                        exp = Config.redis.cache.storage.exp
+                    )
+                    
+                    await admin_storage_content.storage_datatable_cache.clear_cache(Config.redis.cache.storage_items.id)
 
-            await storage_view.load_cache_data(
-                cache_id = Config.redis.cache.devices.id, 
-                exp = Config.redis.cache.devices.exp
-            )
+                    await admin_storage_content.load_cache_data(
+                        target = Config.redis.cache.storage_items.target,
+                        cache_id = Config.redis.cache.storage_items.id,
+                        exp = Config.redis.cache.storage_items.exp
+                    )
+
+                admin_tenant_content = self.admin_view.get_tenants_content()
+                
+                if admin_tenant_content is not None:
+                    
+                    await admin_tenant_content.tenant_datatable_cache.clear_cache(Config.redis.cache.tenants.id)
+                    
+                    await admin_tenant_content.load_cache_data(
+                        cache_id = Config.redis.cache.tenants.id,
+                        exp = Config.redis.cache.tenants.exp,
+                        update_rental_cache = False
+                    )
+                        
+            storage_view = self.get_storage_view()
             
-            await storage_view.returnable_cache_service.clear_cache(Config.redis.cache.returnable_packaging.id)
+            if storage_view is not None:
+                
+                await storage_view.material_cache_service.clear_cache(Config.redis.cache.material.id)
+                
+                await storage_view.load_cache_data(
+                    cache_id = Config.redis.cache.material.id, 
+                    exp = Config.redis.cache.material.exp
+                )
+                
+                await storage_view.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
+                
+                await storage_view.load_cache_data(
+                    cache_id = Config.redis.cache.tools.id, 
+                    exp = Config.redis.cache.tools.exp
+                )
+                
+                await storage_view.devices_cache_service.clear_cache(Config.redis.cache.devices.id)
+
+                await storage_view.load_cache_data(
+                    cache_id = Config.redis.cache.devices.id, 
+                    exp = Config.redis.cache.devices.exp
+                )
+                
+                await storage_view.returnable_cache_service.clear_cache(Config.redis.cache.returnable_packaging.id)
+                
+                await storage_view.load_cache_data(
+                    cache_id = Config.redis.cache.returnable_packaging.id, 
+                    exp = Config.redis.cache.returnable_packaging.exp
+                )
+                
+            # if self.marine_view is not None:
+                
+            #     self.marine_view.marine_traffic_search_cache.clear_cache()
+       
+        finally:
             
-            await storage_view.load_cache_data(
-                cache_id = Config.redis.cache.returnable_packaging.id, 
-                exp = Config.redis.cache.returnable_packaging.exp
-            )
+            self._cache_clearing_in_progress = False
             
-        # if self.marine_view is not None:
-            
-        #     self.marine_view.marine_traffic_search_cache.clear_cache()
-        
-        self.log.info("Clearing all Redis cache -> END")   
-    
+            if getattr(self, "_close_requested", False):
+                
+                self._close_requested = False
+                
+                self.close()
+                
+            self.log.info("Clearing all Redis cache -> END")   
+   
     def get_marine_traffic_view(self) -> MarineTrafficSearchView:
         
         if self.marine_view is not None:
