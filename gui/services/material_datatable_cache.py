@@ -1,6 +1,6 @@
 import json
 import logging
-import base64
+import asyncio
 
 from db.async_redis import AsyncRedisClient
 from utils.dc.material import MaterialCacheData, MaterialData
@@ -11,11 +11,16 @@ class MaterialCacheService(LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    KEY_PREFIX = "material:"
+    
+    def __init__(self, 
+        redis_client: AsyncRedisClient,
+        storage_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "material:"
+        
+        self.storage_lock = storage_lock
 
     def _make_key(self, material_cache_id: str) -> str:
         
@@ -44,7 +49,7 @@ class MaterialCacheService(LoggerMixin):
                 
                 if material_cache_id in decoded_json and "items" in decoded_json[material_cache_id]:
                     
-                    item_data = self.redis_client.decode_from_cache(decoded_json[material_cache_id]["items"])
+                    item_data = decoded_json[material_cache_id]["items"]
                  
                     return MaterialCacheData(
                         items = [MaterialData(**entry) for entry in item_data]
@@ -90,13 +95,14 @@ class MaterialCacheService(LoggerMixin):
                 wrapped = {
                     material_cache_id: {
                         "items": [
-                            self.redis_client.encode_for_cache(item.model_dump())
+                            item.model_dump(mode = "json")
                             for item in raw_data
                         ]
                     }
                 }
                 
-                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+                async with self.storage_lock:
+                    await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
                 
                 self.log.debug("Material data cached for %s" % material_cache_id)
                 
@@ -116,4 +122,5 @@ class MaterialCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.storage_lock:
+            await self.redis_client.clear_cache(key)

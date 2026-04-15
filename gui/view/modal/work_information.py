@@ -41,7 +41,7 @@ class WorkInformationModal(QDialog, LoggerMixin):
 
     def __init_modal(self, json_data):
         
-        self.setWindowTitle("PDF Data Table")
+        self.setWindowTitle("PDF Adatok táblázat")
         self.resize(1024, 768)
 
         if isinstance(json_data, str):
@@ -67,7 +67,7 @@ class WorkInformationModal(QDialog, LoggerMixin):
             table = QTableWidget()
             table.setObjectName("ModalTable")
             table.setColumnCount(2)
-            table.setHorizontalHeaderLabels(["Category", "Content"])
+            table.setHorizontalHeaderLabels(["Kategória", "Tartalom"])
             table.horizontalHeader().setStretchLastSection(True)
             table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
             table.verticalHeader().setVisible(False)

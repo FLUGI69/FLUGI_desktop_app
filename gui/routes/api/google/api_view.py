@@ -114,7 +114,19 @@ class GmailApiView(ABC, LoggerMixin):
 
             try:
                 
-                method = getattr(resource, method_name)
+                if isinstance(method_name, str) and "." in method_name:
+                    
+                    parts = method_name.split(".")
+                    
+                    for part in parts[:-1]:
+                        
+                        resource = getattr(resource, part)()
+                    
+                    method = getattr(resource, parts[-1])
+                    
+                else:
+                    
+                    method = getattr(resource, method_name)
                 
             except AttributeError as e:
                 

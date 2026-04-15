@@ -48,14 +48,15 @@ class CalendarContent(QWidget, LoggerMixin):
         
         self.reminder_day_modal = ReminderDayModal()
         
-        self.reminders_cache = CalendarReminderCacheService(admin.redis_client)
+        self.reminders_cache = CalendarReminderCacheService(
+            redis_client = admin.redis_client,
+            reminder_lock = admin.main_window.app.reminder_lock
+        )
         
         self.calendar = CustomCalendar()
         
         self._modal_future = None
-        
-        self._calendar_lock = admin.main_window.app.rental_lock
-        
+ 
         self.__init_view()
         
         self.data_loaded.connect(self.on_data_loaded)
@@ -163,14 +164,12 @@ class CalendarContent(QWidget, LoggerMixin):
     async def _handle_insert_data(self, calendar_data: CalendarData):
         
         if isinstance(calendar_data, CalendarData):
-            
-            async with self._calendar_lock:
-                
-                await queries.insert_reminder(
-                    note = calendar_data.note,
-                    reminder_date = calendar_data.date,
-                    used = calendar_data.used,
-                )
+          
+            await queries.insert_reminder(
+                note = calendar_data.note,
+                reminder_date = calendar_data.date,
+                used = calendar_data.used,
+            )
                 
             await self.reminders_cache.clear_cache(self._create_cache_id())
 

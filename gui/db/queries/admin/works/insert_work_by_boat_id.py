@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import insert, update
 
 from decimal import Decimal
@@ -14,6 +15,7 @@ class insert_work_by_boat_id(AsyncQueryBase):
     async def query(self, 
         boat_id: int, 
         leader: str,
+        order_date: datetime,
         description: str,
         is_contractor: bool,
         img_paths: list = [],
@@ -25,6 +27,7 @@ class insert_work_by_boat_id(AsyncQueryBase):
             new_work = example_db.work(
                 boat_id = boat_id,
                 leader = leader,
+                order_date = order_date,
                 description = description,
                 start_date = None,
                 finished_date = None,
@@ -83,14 +86,11 @@ class insert_work_by_boat_id(AsyncQueryBase):
             
             await self.update_material_quantity(m)
         
-        values_to_insert = [
-            {
+        values_to_insert = [{
             "work_id": work_id, 
             "component_id": material.id, 
             "quantity": material.quantity
-            }
-            for material in materials
-        ]
+            } for material in materials]
         
         await self.session.execute(
             insert(

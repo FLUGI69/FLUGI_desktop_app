@@ -12,8 +12,6 @@ from datetime import datetime
 
 from config import Config
 
-EXCLUDED_MODELS = Config.websocket.excluded_models
-
 class DataclassBaseModel(pydantic.BaseModel):
 
     model_config = ConfigDict(
@@ -111,8 +109,6 @@ class DataclassBaseModel(pydantic.BaseModel):
         
         for field_name, field_value in self.__dict__.items():
 
-            # print(field_name, field_value, type(field_value))
-
             if field_name.startswith("_") == True:
                 continue
 
@@ -143,14 +139,12 @@ class DataclassBaseModel(pydantic.BaseModel):
                     if isinstance(item, str):
                         
                         item = f"'{item}'"
-                        # print(item)
                         
                     elif self.is_pydantic_dataclass(item.__class__) == True:
                         
                         item = str(item)
                     
                     list_value.append(item)
-                    # print(list_value)
 
                 value = "[%s]" % (str(', '.join(list_value)))
 
@@ -213,7 +207,7 @@ class DataclassBaseModel(pydantic.BaseModel):
                 # print(name, issubclass(obj, cls))
                 
                 if cls.is_subclass_of_dataclass_base(obj) and obj is not cls \
-                    and name not in EXCLUDED_MODELS:
+                    and name not in Config.websocket.excluded_models:
                             
                     models.append(obj)
 

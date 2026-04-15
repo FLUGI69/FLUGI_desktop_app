@@ -23,7 +23,7 @@ class ConfirmActionModal(QDialog, LoggerMixin):
         
         super().__init__(parent)
         
-        self.setWindowTitle("Confirmation")
+        self.setWindowTitle("Megerősítés")
         
         self.setModal(True)
         
@@ -38,6 +38,7 @@ class ConfirmActionModal(QDialog, LoggerMixin):
     def __init_modal(self):
 
         self.setObjectName("ConfirmModal")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(20, 20, 20, 20)
@@ -51,7 +52,7 @@ class ConfirmActionModal(QDialog, LoggerMixin):
         # self.scroll_area.setMaximumHeight(400)
         
         self.message_label = QLabel()
-        self.message_label.setObjectName("ConfirmModalLabel")
+        self.message_label
         self.message_label.setWordWrap(True)
         self.message_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
@@ -114,7 +115,7 @@ class ConfirmActionModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -130,7 +131,7 @@ class ConfirmActionModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

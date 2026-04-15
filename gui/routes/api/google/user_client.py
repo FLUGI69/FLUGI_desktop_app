@@ -8,7 +8,7 @@ from google.oauth2.credentials import Credentials
 
 from utils.logger import LoggerMixin
 from .api_view import GmailApiView
-from utils.handlers.installed_app_flow import ExampleAppFlow
+from utils.handlers.installed_app_flow import FlugiAppFlow
 from utils.dc.user_device import UserDevice
 from utils.dc.google_token import GoogleToken
 from db import queries
@@ -105,7 +105,7 @@ class UserClientView(GmailApiView, LoggerMixin):
                 self.log.info("No existing credentials, starting OAuth flow")
                 
                 # flow = InstalledAppFlow.from_client_secrets_file(str(self.credentials_path), self.scopes)
-                flow = ExampleAppFlow.from_client_config(
+                flow = FlugiAppFlow.from_client_config(
                     client_config = Config.google.credentials.secret, 
                     scopes = self.scopes
                 )

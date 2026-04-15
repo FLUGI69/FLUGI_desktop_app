@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -10,11 +11,16 @@ class CalendarReminderCacheService(LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    KEY_PREFIX = "reminders:"
+    
+    def __init__(self, 
+        redis_client: AsyncRedisClient,
+        reminder_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "reminders:"
+        
+        self.reminder_lock = reminder_lock
 
     def _make_key(self, calendar_cache_id: str) -> str:
         
@@ -82,7 +88,8 @@ class CalendarReminderCacheService(LoggerMixin):
                     }
                 }
                 
-                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+                async with self.reminder_lock:
+                    await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
                 
                 self.log.debug("Calendar data cached for %s" % calendar_cache_id)
                 
@@ -102,4 +109,5 @@ class CalendarReminderCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.reminder_lock:
+            await self.redis_client.clear_cache(key)

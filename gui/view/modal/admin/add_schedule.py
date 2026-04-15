@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 
 from PyQt6.QtWidgets import (
@@ -31,7 +31,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
         
         self.selected_boat: MarineTrafficData = None
         
-        self.setWindowTitle("Selection")
+        self.setWindowTitle("Választás")
         
         self.setModal(True)
         
@@ -44,8 +44,9 @@ class AddSceduleModal(QDialog, LoggerMixin):
     def __init_modal(self):
         
         self.setObjectName("ConfirmModal")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.message_label = QLabel("Select the boat from your fleet you want to add to:")
+        self.message_label = QLabel("Válaszd ki a flottádból a hajót amihez hozzá kívánod adni:")
         self.message_label.setObjectName("ConfirmModalLabel")
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
  
@@ -53,7 +54,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
         self.combo_box.setFixedHeight(35)
         self.combo_box.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         
-        self.label_location = QLabel("Location:")
+        self.label_location = QLabel("Lokáció:")
         self.input_location = QLineEdit()
         self.input_location.setPlaceholderText("Budapest / Esztergom")
         self.input_location.setObjectName("input_unit")
@@ -65,7 +66,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
         
         self.min_datetime = QDateTime.currentDateTime()
 
-        self.label_arrival_date = QLabel("Arrival ideje:")
+        self.label_arrival_date = QLabel("Érkezés ideje:")
         self.arrival_date = QDateTimeEdit()
         self.arrival_date.setFixedHeight(35)
         self.arrival_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -77,7 +78,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
         self.arrival_date_error.setObjectName("error")
         self.arrival_date_error.setVisible(False)
         
-        self.label_ponton = QLabel("Pontoon:")
+        self.label_ponton = QLabel("Ponton:")
         self.input_ponton = QLineEdit()
         self.input_ponton.setPlaceholderText("International I")
         self.input_ponton.setObjectName("input_unit")
@@ -87,7 +88,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
         self.input_ponton_error.setObjectName("error")
         self.input_ponton_error.setVisible(False)
         
-        self.label_leave_date = QLabel("Departure ideje:")
+        self.label_leave_date = QLabel("Távozás ideje:")
         self.leave_date = QDateTimeEdit()
         self.leave_date.setFixedHeight(35)
         self.leave_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -191,11 +192,12 @@ class AddSceduleModal(QDialog, LoggerMixin):
         arrival_date = self.arrival_date.dateTime()
         ponton = self.input_ponton.text().strip()
         leave_date = self.leave_date.dateTime()
-        print(arrival_date)
-        print(leave_date)
+        # print(arrival_date)
+        # print(leave_date)
+        
         if location == "":
 
-            self.input_location_error.setText("You did not provide a location")
+            self.input_location_error.setText("Nem adtál meg lokációt")
             self.input_location_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'location' field is empty")
@@ -208,7 +210,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
             
         if arrival_date == current_time:
             
-            self.arrival_date_error.setText("Arrival time cannot be exactly the current time")
+            self.arrival_date_error.setText("Érkezés ideje nem lehet pontosan a jelenlegi időpont")
             self.arrival_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'arrival_date' equals current time")
@@ -217,7 +219,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
 
         elif arrival_date < QDateTime(QDate(2000, 1, 1), QTime(0, 0)):
             
-            self.arrival_date_error.setText("Arrival year must be at least 2000")
+            self.arrival_date_error.setText("Az érkezés éve legalább 2000 lehet")
             self.arrival_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'arrival_date' field is invalid")
@@ -230,7 +232,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
             
         if ponton == "":
 
-            self.input_ponton_error.setText("You did not provide meg Pontoont")
+            self.input_ponton_error.setText("Nem adtál meg Pontont")
             self.input_ponton_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'ponton' field is empty")
@@ -243,7 +245,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
             
         if leave_date == current_time:
             
-            self.leave_date_error.setText("Departure time cannot be exactly the current time")
+            self.leave_date_error.setText("Távozás ideje nem lehet pontosan a jelenlegi időpont")
             self.leave_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'leave_date' equals current time")
@@ -252,7 +254,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
 
         elif leave_date < QDateTime(QDate(2000, 1, 1), QTime(0, 0)):
             
-            self.leave_date_error.setText("Departure year must be at least 2000")
+            self.leave_date_error.setText("A távozás éve legalább 2000 lehet")
             self.leave_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'leave_date' field is invalid")
@@ -311,7 +313,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -327,7 +329,7 @@ class AddSceduleModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -365,4 +367,3 @@ class AddSceduleModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

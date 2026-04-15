@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 from PyQt6.QtWidgets import (
     QSizePolicy,
@@ -43,7 +43,7 @@ class AdminEditTable(QTableWidget, LoggerMixin):
         
         self.setColumnCount(4)
         
-        self.setHorizontalHeaderLabels(["", "Ship", "Works", "Responsible"])
+        self.setHorizontalHeaderLabels(["", "Hajó", "Munkák", "Felelős"])
         
         self.setColumnWidth(0, 40)  
 
@@ -59,53 +59,61 @@ class AdminEditTable(QTableWidget, LoggerMixin):
 
     def load_data(self, admin_boat_data: list[AdminEditWorkData]):
         
-        self.log.debug("Preparing to load the following boat records into the table: %s" % str(admin_boat_data))
+        self.log.debug("Preparing to load %d boat records into the table (first 10: %s)" % (len(admin_boat_data) if isinstance(admin_boat_data, list) else 0, str(admin_boat_data[:10]) if isinstance(admin_boat_data, list) else "[]"))
         
         self._checkboxes.clear()
         
-        self.clearContents()
+        self.setUpdatesEnabled(False)
         
-        self.setRowCount(0)
+        try:
 
-        if isinstance(admin_boat_data, list) and all(isinstance(row, AdminEditWorkData) for row in admin_boat_data):
-            
-            for row_index, row in enumerate(admin_boat_data):
+            if isinstance(admin_boat_data, list) and all(isinstance(row, AdminEditWorkData) for row in admin_boat_data):
                 
-                self.insertRow(row_index)
+                self.clearContents()
                 
-                checkbox = QCheckBox()
-                checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                checkbox.setProperty("edit_table_data", row)
-                checkbox.stateChanged.connect(self._on_checkbox_toggled)
+                self.setRowCount(0)
                 
-                self._checkboxes.append(checkbox)
+                self.setRowCount(len(admin_boat_data))
+
+                for row_index, row in enumerate(admin_boat_data):
                 
-                checkbox_widget = QWidget()
-                
-                layout = QHBoxLayout(checkbox_widget)
-                layout.addWidget(checkbox)
-                layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout.setContentsMargins(0, 0, 0, 0)
-                
-                checkbox_widget.setLayout(layout)
-                
-                self.setCellWidget(row_index, 0, checkbox_widget)
-            
-                fields = [
-                    row.boat.name if row.boat.name != "" else "N/A",
-                    row.description if row.description != "" else "N/A",
-                    row.leader if row.leader != "" else "N/A",
-                ]
-                
-                for col_index, value in enumerate(fields, start = 1):
-          
-                    cell = QTableWidgetItem(str(value))
-                    cell.setForeground(Qt.GlobalColor.white)
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    checkbox = QCheckBox()
+                    checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                    checkbox.setProperty("edit_table_data", row)
+                    checkbox.stateChanged.connect(self._on_checkbox_toggled)
                     
-                    self.setItem(row_index, col_index, cell)
+                    self._checkboxes.append(checkbox)
+                    
+                    checkbox_widget = QWidget()
+                    
+                    layout = QHBoxLayout(checkbox_widget)
+                    layout.addWidget(checkbox)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    checkbox_widget.setLayout(layout)
+                    
+                    self.setCellWidget(row_index, 0, checkbox_widget)
+                
+                    fields = [
+                        row.boat.name if row.boat.name != "" else "N/A",
+                        row.description if row.description != "" else "N/A",
+                        row.leader if row.leader != "" else "N/A",
+                    ]
+                
+                    for col_index, value in enumerate(fields, start = 1):
+          
+                        cell = QTableWidgetItem(str(value))
+                        cell.setForeground(Qt.GlobalColor.white)
+                        cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    
+                        self.setItem(row_index, col_index, cell)
                 
                 self.resizeRowsToContents()
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
                  
     def _on_checkbox_toggled(self, state):
         

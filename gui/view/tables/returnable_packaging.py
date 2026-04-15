@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 from PyQt6.QtWidgets import (
     QTableWidget,
@@ -10,19 +10,27 @@ from PyQt6.QtWidgets import (
     QHBoxLayout
 )
 from PyQt6.QtGui import QCursor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from utils.dc.returnable_packaging import ReturnablePackagingData, ReturnablePackagingCacheData
 from config import Config
+from utils.handlers.math import UtilityCalculator
 from utils.logger import LoggerMixin
 
 class ReturnablePackagingTable(QTableWidget, LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, parent = None):
+    header_clicked = pyqtSignal(int)
+    
+    def __init__(self, 
+        utility_calculator = None, 
+        parent = None
+        ):
         
         super().__init__(parent)
+        
+        self.utility_calculator: UtilityCalculator = utility_calculator
         
         self.__init_table()
         
@@ -36,9 +44,9 @@ class ReturnablePackagingTable(QTableWidget, LoggerMixin):
         
         self.verticalHeader().setVisible(False)
         
-        self.setColumnCount(6)
+        self.setColumnCount(8)
         
-        self.setHorizontalHeaderLabels(["", "Name", "Quantity", "Bottle number", "Returned", "Price"])
+        self.setHorizontalHeaderLabels(["", "Megnevezés", "Mennyiség", "Palackszám", "Visszaküldve", "Beszerzés időpontja", "Nettó egységár", "Összesített ár"])
         
         self.setColumnWidth(0, 40)
     
@@ -46,9 +54,17 @@ class ReturnablePackagingTable(QTableWidget, LoggerMixin):
         
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         
-        for col in range(1, 6):
+        for col in range(1, self.columnCount()):
             
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            
+            self.setColumnWidth(col, 300)
+        
+        header.setStretchLastSection(False)
+        
+        header.sectionClicked.connect(self.header_clicked.emit)
+        
+        header.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -61,23 +77,29 @@ class ReturnablePackagingTable(QTableWidget, LoggerMixin):
               
     def load_data(self, returnable_packaging_cache: ReturnablePackagingCacheData):
         
-        self.log.debug("Preparing to load the following returnable packaging records into the table: %s" % str(returnable_packaging_cache))
+        items = returnable_packaging_cache.items if hasattr(returnable_packaging_cache, "items") else []
         
-        self.clearContents()
+        self.log.debug("Preparing to load %d returnable packaging records into the table (first 10: %s)" % (len(items), str(items[:10])))
         
-        self.setRowCount(0)
-
-        if hasattr(returnable_packaging_cache, "items"):
+        self.setUpdatesEnabled(False)
+        
+        try:
+        
+            self.clearContents()
             
-            for row_index, item in enumerate(returnable_packaging_cache.items):
+            self.setRowCount(0)
+
+            if hasattr(returnable_packaging_cache, "items"):
                 
-                if item is not None and item.is_deleted == False:
-                    
-                    self.insertRow(row_index)
+                visible_items = [item for item in returnable_packaging_cache.items if item is not None and item.is_deleted == False]
+                
+                self.setRowCount(len(visible_items))
+                
+                for row_index, item in enumerate(visible_items):
 
                     checkbox = QCheckBox()
                     checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                    checkbox.setProperty("returnable_packaging_data", item)  # full item attached 
+                    checkbox.setProperty("returnable_packaging_data", item)
                     
                     checkbox_widget = QWidget()
                     
@@ -90,12 +112,23 @@ class ReturnablePackagingTable(QTableWidget, LoggerMixin):
                     
                     self.setCellWidget(row_index, 0, checkbox_widget)
                     
+                    if self.utility_calculator and item.price is not None and item.quantity is not None:
+                        
+                        raw_total = float(self.utility_calculator.arithmetic_decimal(item.price, item.quantity, "multiply", 2))
+                        total_price = f"{raw_total:,.2f}".replace(",", ".") + " HUF"
+                   
+                    else:
+                        
+                        total_price = "N/A"
+
                     fields = [
                         item.name if item.name != "" else "N/A",
                         f"{item.quantity:.4f}" if item.quantity is not None else "N/A",
                         item.manufacture_number if item.manufacture_number is not None else "N/A",
-                        "Yes" if item.is_returned == True else "No" if item.is_returned == False else "N/A",
+                        "Igen" if item.is_returned == True else "Nem" if item.is_returned == False else "N/A",
+                        item.purchase_date.strftime(Config.time.timeformat) if item.purchase_date is not None else "N/A",
                         f"{item.price:,.2f}".replace(",", ".") + " HUF" if item.price is not None else "N/A",
+                        total_price,
                         item.id
                     ]
 
@@ -105,6 +138,10 @@ class ReturnablePackagingTable(QTableWidget, LoggerMixin):
                         cell.setForeground(Qt.GlobalColor.white)
                         cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.setItem(row_index, col_index, cell)
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
                         
     def get_selected_cache_data(self) -> list[ReturnablePackagingCacheData]:
         

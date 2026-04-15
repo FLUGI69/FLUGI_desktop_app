@@ -83,7 +83,7 @@ class LoggerMixin:
 
         console_handler = logging.StreamHandler()
         console_formatter = colorlog.ColoredFormatter(
-            "%(log_color)s%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+            "%(log_color)s%(asctime)s %(process)d %(processName)s %(threadName)s %(levelname)s %(name)s %(module)s.%(funcName)s:%(lineno)d # %(message)s",
             datefmt = "%Y-%m-%d %H:%M:%S",
             log_colors = {
                 'DEBUG': 'light_blue',
@@ -94,7 +94,7 @@ class LoggerMixin:
                 'PRINT': 'cyan'
             }
         )
-    
+
         console_handler.setFormatter(console_formatter)
         handlers.append(console_handler)
 
@@ -138,6 +138,7 @@ class LoggerMixin:
         logging.getLogger("qasync._windows._EventWorker").setLevel(logging.WARNING)
         logging.getLogger("qasync._windows._EventPoller").setLevel(logging.WARNING)
         logging.getLogger("qasync.QThreadExecutor").setLevel(logging.WARNING)
+        logging.getLogger("aiomysql").setLevel(logging.WARNING)
         logging.getLogger("qasync._QEventLoop").setLevel(logging.WARNING)
         logging.getLogger("googleapiclient.discovery").setLevel(logging.WARNING)
         logging.getLogger("httpcore.http11").setLevel(logging.WARNING)
@@ -154,6 +155,7 @@ class LoggerMixin:
         logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
         logging.getLogger("zeep.wsdl.wsdl").setLevel(logging.ERROR)
         logging.getLogger("PIL.PngImagePlugin").setLevel(logging.ERROR)
+        logging.getLogger("qasync._windows._IocpProactor").setLevel(logging.WARNING)
         
         cls._root_configured = True
 

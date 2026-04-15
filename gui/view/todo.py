@@ -6,6 +6,9 @@ from pathlib import Path
 import sys
 import typing as t
 import os
+from weasyprint import HTML
+from base64 import b64encode
+from uuid import uuid4
 
 from PyQt6.QtWidgets import (
     QWidget, 
@@ -16,25 +19,35 @@ from PyQt6.QtWidgets import (
     QLabel,
     QAbstractScrollArea,
     QDialog,
-    QPushButton
+    QPushButton,
+    QTextEdit,
+    QFrame
 )
-from PyQt6.QtCore import Qt, QTimer, QSize
-from PyQt6.QtGui import QMovie, QPixmap, QIcon, QCursor
+from PyQt6.QtCore import Qt, QTimer, QSize, QUrl
+from PyQt6.QtGui import QMovie, QPixmap, QIcon, QCursor, QDesktopServices
 
 from config import Config
 from utils.logger import LoggerMixin
 from utils.dc.todo_data import TodoBoat, BoatWork
 from utils.dc.admin.ship_schedule import ShipSchedule
-from .modal.todo import StatusNotesModal, ShowImagesModal
+from .modal.todo import StatusNotesModal, ShowImagesModal, PrintWorkModal
+from utils.dc.admin.work.status_note import AdminWorkStatusNote
 from db import queries
 
+if t.TYPE_CHECKING:
+    from .main_window import MainWindow
+    
 class TodoView(QWidget, LoggerMixin):
 
     log: logging.Logger
 
-    def __init__(self):
+    def __init__(self, 
+        main_window: 'MainWindow'
+        ):
         
         super().__init__()
+        
+        self.main_window = main_window
         
         self.table: QTableWidget = None
 
@@ -67,6 +80,8 @@ class TodoView(QWidget, LoggerMixin):
         self.show_imgs_modal = ShowImagesModal(self)
         
         self.status_notes_modal = StatusNotesModal(self)
+        
+        self.print_work_modal = PrintWorkModal(self)
 
     @staticmethod
     def icon(name: str) -> QIcon:
@@ -109,8 +124,8 @@ class TodoView(QWidget, LoggerMixin):
         
         table = QTableWidget()
         table.setObjectName("TodoTable")
-        table.setColumnCount(8)
-        table.setHorizontalHeaderLabels(["Location", "Ship", "Arrival", "Pontoon", "Departure", "Task", "", ""])
+        table.setColumnCount(9)
+        table.setHorizontalHeaderLabels(["Hely", "Hajó", "Érkezés", "Ponton", "Távozás", "Feladat", "", "", ""])
         table.verticalHeader().setVisible(False)
         table.setWordWrap(True)
 
@@ -125,7 +140,7 @@ class TodoView(QWidget, LoggerMixin):
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setStretchLastSection(False)
 
-        widths = [200, 200, 200, 200, 200, 1600, 100, 100]
+        widths = [200, 200, 200, 200, 200, 1600, 100, 100, 100]
         
         for i in range(table.columnCount()):
             
@@ -178,6 +193,7 @@ class TodoView(QWidget, LoggerMixin):
                 works = [BoatWork(
                     id = work.id,
                     leader = work.leader,
+                    order_date = work.order_date,
                     description = work.description,
                     start_date = work.start_date,
                     finished_date = work.finished_date,
@@ -192,7 +208,7 @@ class TodoView(QWidget, LoggerMixin):
             if next_leave_date:
                 
                 now = datetime.now(Config.time.timezone_utc)
-                
+
                 if next_leave_date.tzinfo is None:
                     
                     next_leave_date = next_leave_date.replace(tzinfo = Config.time.timezone_utc)
@@ -239,7 +255,7 @@ class TodoView(QWidget, LoggerMixin):
                 show_img_btn.setProperty("boat", boat)
                 show_img_btn.setIcon(TodoView.icon("image.svg"))
                 show_img_btn.setIconSize(QSize(20, 20))
-                show_img_btn.setToolTip("View images")
+                show_img_btn.setToolTip("Képek megtekintése")
                 show_img_btn.clicked.connect(lambda _, idx = row_index: self.show_image_for_particular_boat(idx))
                 
                 show_img_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -259,7 +275,7 @@ class TodoView(QWidget, LoggerMixin):
                 notes_btn.setProperty("boat", boat)
                 notes_btn.setIcon(TodoView.icon("file.svg"))
                 notes_btn.setIconSize(QSize(20, 20))
-                notes_btn.setToolTip("View notes")
+                notes_btn.setToolTip("Jegyzetek megtekintése")
                 notes_btn.clicked.connect(lambda _, idx = row_index: self.check_status_notes(idx))
                 
                 notes_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -271,7 +287,26 @@ class TodoView(QWidget, LoggerMixin):
 
                 self.table.setCellWidget(row_index, 7, notes_container)
                 
-                work_descriptions = ", ".join(f"{idx + 1}: {work.description}" for idx, work in enumerate(boat.works))
+                print_btn = QPushButton()
+                print_btn.setObjectName("WorkBtn")
+                print_btn.setStyleSheet(Config.styleSheets.work_btn)
+                print_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                print_btn.setProperty("boat", boat)
+                print_btn.setIcon(TodoView.icon("printer.svg"))
+                print_btn.setIconSize(QSize(20, 20))
+                print_btn.setToolTip("Munka nyomtatása")
+                print_btn.clicked.connect(lambda _, idx = row_index: self.print_work_data(idx))
+                
+                print_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                
+                print_btn_container = QWidget()
+                layout = QVBoxLayout(print_btn_container)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.addWidget(print_btn)
+                
+                self.table.setCellWidget(row_index, 8, print_btn_container)
+                
+                work_descriptions = "\n".join(f"  {idx + 1}. {work.description}" for idx, work in enumerate(boat.works))
                 
                 values = [
                     boat.schedule.location,
@@ -288,6 +323,22 @@ class TodoView(QWidget, LoggerMixin):
                 
                 for col_index, value in enumerate(values):
                     
+                    if col_index == 5:
+                        
+                        text_edit = QTextEdit()
+                        text_edit.setReadOnly(True)
+                        text_edit.setPlainText(value)
+                        text_edit.setFrameShape(QFrame.Shape.NoFrame)
+                        text_edit.setStyleSheet("QTextEdit { background: transparent; color: white; font-size: 18px; }")
+                        text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                        text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                        
+                        self.table.setCellWidget(row_index, col_index, text_edit)
+                        
+                        list_hint_height.append(default_height)
+                        
+                        continue
+                    
                     wrapped_value = self.wrap_text(value)
                     
                     line_count = wrapped_value.count('\n') + 1
@@ -299,11 +350,11 @@ class TodoView(QWidget, LoggerMixin):
                     
                     if col_index in [0, 1, 2, 3, 4]:
                         
-                        label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # center
+                        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     
                     else:
                         
-                        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)  # left and vertically centered
+                        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                     
                     self.table.setCellWidget(row_index, col_index, label)
                     
@@ -315,17 +366,17 @@ class TodoView(QWidget, LoggerMixin):
                     
                     list_hint_height.append(hint_height)
 
-                if list_hint_height[-1] > default_height:
-                    # print("Row:", row_index)
-                    self.table.setRowHeight(row_index, list_hint_height[-1])
+                non_work_heights = [h for i, h in enumerate(list_hint_height) if i != 5]
+                max_height = max(non_work_heights) if non_work_heights else default_height
+                
+                if max_height > default_height:
+                    self.table.setRowHeight(row_index, max_height)
         
         else:
             
             await self.__centralize_gif()
             
             self.log.info("No records found in the database")
-        
-        self._auto_scroll_timer.start(50)
     
     @asyncSlot(int)
     async def show_image_for_particular_boat(self, idx: int):
@@ -366,7 +417,117 @@ class TodoView(QWidget, LoggerMixin):
             self.status_notes_modal.set_dropdown(current_row_data.works)
             
             await self.status_notes_modal.exec_async()
-                  
+      
+    def svg_to_base64(self, filename):
+        
+        with open(filename, "rb") as f:
+            
+            return b64encode(f.read()).decode("utf-8")
+            
+    @asyncSlot(int)
+    async def print_work_data(self, idx: int):
+        
+        for row_idx in range(self.table.rowCount()):
+            
+            if row_idx != idx:
+                continue
+            
+            print_col_widget = self.table.cellWidget(row_idx, 8)
+            
+            print_btn = self.get_current_col_btn(print_col_widget)
+        
+        if print_btn is None:
+            return
+        
+        current_row_data: TodoBoat = print_btn.property("boat")
+        
+        if not current_row_data.works:
+            return
+        
+        self.print_work_modal.set_dropdown(current_row_data.works)
+        
+        selected_work: BoatWork | None = await self.print_work_modal.exec_async()
+        
+        if selected_work is None:
+            return
+        
+        template = self.main_window.app.templates["work_report"]
+
+        svg_dir_path = os.path.join(os.path.dirname(__file__), "../static/assets/img/svg") if self.main_window.app.is_dev_mode == True \
+            else os.path.join(os.path.dirname(sys.executable), "_internal/gui/static/assets/img/svg")
+        
+        cts_logo = self.svg_to_base64(os.path.join(svg_dir_path, "cts_logo.svg"))
+        
+        status_notes = []
+        
+        if selected_work.transfered == True:
+            
+            try:
+                
+                query_result = await queries.select_work_status_by_work_id(selected_work.id)
+                
+                if query_result is not None:
+                    
+                    status_notes = [AdminWorkStatusNote(
+                        id = note.id,
+                        note = note.note,
+                        created_at = note.created_at
+                    ) for note in query_result.notes]
+            
+            except Exception as e:
+                
+                self.log.exception("Failed to fetch status notes for work %d: %s" % (selected_work.id, str(e)))
+        
+        html = template.render(
+            cts_logo = cts_logo,
+            boat_name = current_row_data.name,
+            work = selected_work,
+            schedule = current_row_data.schedule,
+            status_notes = status_notes,
+            current_date = datetime.now(Config.time.timezone_utc).strftime("%Y. %m. %d. %H:%M"),
+            timeformat = Config.time.timeformat,
+            show_page_numbers = False
+        )
+        
+        reports_dir = "work_reports"
+        
+        os.makedirs(reports_dir, exist_ok=True)
+        
+        safe_boat_name = current_row_data.name.replace(" ", "_")
+        
+        unique_id = uuid4().hex[:8]
+        
+        current_timestamp = datetime.now(Config.time.timezone_utc).strftime(Config.time.timestamp_format)
+        
+        pdf_filename = f"{safe_boat_name}_work_{selected_work.id}_[{current_timestamp}]_{unique_id}.pdf"
+        
+        pdf_path = os.path.join(reports_dir, pdf_filename)
+        
+        doc = HTML(string = html).render()
+        
+        if len(doc.pages) > 1:
+            
+            html = template.render(
+                cts_logo = cts_logo,
+                boat_name = current_row_data.name,
+                work = selected_work,
+                schedule = current_row_data.schedule,
+                status_notes = status_notes,
+                current_date = datetime.now(Config.time.timezone_utc).strftime("%Y. %m. %d. %H:%M"),
+                timeformat = Config.time.timeformat,
+                show_page_numbers = True
+            )
+            
+            HTML(string = html).write_pdf(pdf_path)
+            
+        else:
+            
+            doc.write_pdf(pdf_path)
+        
+        self.log.info("Work report PDF saved: %s" % pdf_path)
+        
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(pdf_path)))
+    
     def get_current_col_btn(self, widget: QWidget) -> QPushButton | None:
     
         if widget is not None and isinstance(widget, QWidget):
@@ -490,7 +651,7 @@ class TodoView(QWidget, LoggerMixin):
                 
                 self._arrival_timer.start(int(time_diff))
                 
-                self.log.info("Pricerival timer set for %s (in %.1f seconds)" % (
+                self.log.info("Arrival timer set for %s (in %.1f seconds)" % (
                     next_arrival, 
                     time_diff/1000
                     )
@@ -500,7 +661,7 @@ class TodoView(QWidget, LoggerMixin):
                 
                 self._arrival_timer.start(100)
                 
-                self.log.info("Pricerival time already passed, refreshing soon")
+                self.log.info("Arrival time already passed, refreshing soon")
     
     def _on_refhresh_time_reached(self):
 

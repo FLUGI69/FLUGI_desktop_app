@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import logging
 import typing as t 
 import sys
@@ -8,16 +8,17 @@ import socket
 import platform
 import winreg
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QPoint
 from qasync import asyncSlot
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
     QHBoxLayout,
-    QSizePolicy
+    QSizePolicy,
+    QPushButton
 )
-from PyQt6.QtGui import QPixmap, QPalette, QColor, QFont, QImage, QPainter
+from PyQt6.QtGui import QPixmap, QPalette, QColor, QFont, QImage, QPainter, QMouseEvent
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtCore import QSize as _QSize
 
@@ -28,6 +29,7 @@ from routes.api.google.exceptions import (
     AuthenticationError,
 )
 from routes.api.google import UserClientView
+from services.backgound_tasks.otp_zip_worker import OTPZipWorker
 from .main_window import MainWindow
 from config import Config
 from utils.handlers.widgets.clickable import ClickableWidget
@@ -78,20 +80,77 @@ class GmailLoginWindow(QWidget, LoggerMixin):
         
         self.notifier = app.notifier
 
-        self.setWindowTitle("Example Company Ltd. - Gmail Login")
+        self.setWindowTitle("Example Company Ltd. - Gmail Bejelentkezés")
+        
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        self._drag_pos: QPoint | None = None
         
         self.__init_view()
-
+   
     def __init_view(self):
         
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window, QColor("#424242"))
+        outer_layout = QVBoxLayout()
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
         
-        self.setPalette(palette)
+        container = QWidget()
+        container.setObjectName("LoginWindowCentral")
+        container.setStyleSheet("""
+            #LoginWindowCentral {
+                background-color: #424242;
+                border: 1px solid #505050;
+                border-radius: 12px;
+            }
+        """)
         
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        
+        # Title bar
+        title_bar = QWidget()
+        title_bar.setStyleSheet("background: transparent; border: none;")
+        title_bar_layout = QHBoxLayout(title_bar)
+        title_bar_layout.setContentsMargins(16, 6, 6, 0)
+        title_bar_layout.setSpacing(0)
+        
+        title_bar_label = QLabel("Gmail Bejelentkezés")
+        title_bar_label.setStyleSheet("font-size: 11px; color: #b0b0b0; background: transparent; border: none;")
+        title_bar_layout.addWidget(title_bar_label)
+        title_bar_layout.addStretch()
+        
+        btn_close = QPushButton("\u2715")
+        btn_close.setFixedSize(30, 30)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                color: #b0b0b0;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #c42b1c;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background: #a02015;
+                color: #ffffff;
+            }
+        """)
+        btn_close.clicked.connect(self.close)
+        title_bar_layout.addWidget(btn_close)
+        
+        container_layout.addWidget(title_bar)
+        
+        # Content
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setContentsMargins(40, 10, 40, 40)
         layout.setSpacing(10)
         
         if self.logo_path.exists():
@@ -126,7 +185,7 @@ class GmailLoginWindow(QWidget, LoggerMixin):
             layout.addSpacing(20)
 
         # Title
-        title = QLabel("Sign in with your Google account.")
+        title = QLabel("Jelentkezz be Google fiókoddal")
         title.setObjectName("GoogleAuthTitle")
         title.setMinimumWidth(300) 
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -162,7 +221,7 @@ class GmailLoginWindow(QWidget, LoggerMixin):
             button_layout.addWidget(icon_label)
 
         # Text label
-        text_label = QLabel("Sign in")
+        text_label = QLabel("Bejelentkezés")
         text_label.setObjectName("Googlebtntext")
         text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         text_label.setContentsMargins(0, 0, 0, 0)
@@ -181,15 +240,37 @@ class GmailLoginWindow(QWidget, LoggerMixin):
         layout.addWidget(self.status_label)
         layout.addWidget(self.button_container, alignment = Qt.AlignmentFlag.AlignCenter)
 
-        self.setLayout(layout)
+        container_layout.addLayout(layout)
+        outer_layout.addWidget(container)
+        self.setLayout(outer_layout)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+       
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+       
+        self._drag_pos = None
+        
+        super().mouseReleaseEvent(event)
+
     @asyncSlot()
     async def __handle_login(self) -> None:
         
         self.log.info("OAuth login attempt")
         
         self.status_label.setObjectName("info")
-        self.status_label.setText("Connecting to Google account...")
+        self.status_label.setText("Csatlakozás a Google fiókhoz...")
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
 
@@ -214,7 +295,7 @@ class GmailLoginWindow(QWidget, LoggerMixin):
             if self.user_client.is_authorized == True and self.user_client.creds is not None:
                 
                 self.status_label.setObjectName("success")
-                self.status_label.setText("Successful login...")
+                self.status_label.setText("Sikeres bejelentkezés...")
                 self.status_label.style().unpolish(self.status_label)
                 self.status_label.style().polish(self.status_label)
                 
@@ -398,6 +479,15 @@ class GmailLoginWindow(QWidget, LoggerMixin):
         
         self.log.debug("Successfully authenticated")
         
+        if self.app.redis_client is not None and self.app.otp_zip_worker is None:
+            
+            self.app.otp_zip_worker = OTPZipWorker(
+                user_client = self.user_client,
+                redis_client = self.app.redis_client
+            )
+            
+            self.app.add_background_task(self.app.otp_zip_worker._run_loop)
+        
     def _handle_error(self, title: str, exc: Exception) -> None:
         
         self.status_label.setObjectName("error")
@@ -414,4 +504,3 @@ class GmailLoginWindow(QWidget, LoggerMixin):
             self._login_task.cancel()
             
         super().closeEvent(event)
-

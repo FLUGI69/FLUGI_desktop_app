@@ -10,11 +10,14 @@ from utils.dc.material import MaterialData
 from utils.dc.admin.work.status_note import AdminWorkStatusNote
 from utils.enums.storage_item_type_enum import StorageItemTypeEnum
 from utils.enums.tax_number_type_enum import TaxNumberTypeEnum
+from utils.enums.hun_price_category_enum import HunPriceCategoryEnum
+from utils.enums.hun_price_tier_enum import HunPriceTierEnum
 from db.tables import example_db
 
 async def insert_work_by_boat_id(
     boat_id: int, 
     leader: str,
+    order_date: datetime,
     description: str,
     is_contractor: bool,
     img_paths: list = [],
@@ -35,10 +38,7 @@ async def insert_boat_data(
 
 async def insert_boat_schedule(
     boat_id: int, 
-    location: str, 
-    arrived_date: datetime, 
-    ponton: str, 
-    leave_date: datetime
+    schedules: t.List[dict]
 ) -> None: pass
 
 async def insert_material_data(
@@ -97,7 +97,6 @@ async def insert_tenant(
     rental_price: float,
     is_daily_price: bool
 ) -> None: pass
-
 
 async def insert_storage_data(name: str, location: str) -> None: pass
 
@@ -200,6 +199,7 @@ async def insert_quotation_with_order(
 async def update_work_by_id(
     work_id: int,
     leader: str | None,
+    order_date: datetime | None,
     description: str | None,
     prev_transfered: bool,
     transfered: bool,
@@ -214,6 +214,11 @@ async def update_work_by_id(
     deleted_available_material: t.List[MaterialData],
     changed_notes: t.List[AdminWorkStatusNote] = [],
     deleted_img_bytes: dict = {}
+) -> None: pass
+
+async def update_work_transfered_by_id(
+    work_id: int,
+    transfered: bool
 ) -> None: pass
 
 async def update_material_data(
@@ -329,15 +334,21 @@ async def update_schedule_by_id(
 ) -> None: pass
 
 async def update_other_work_prices(
-        work_during_hours: Decimal,
-        work_outside_hours: Decimal,
-        work_sundays: Decimal,
-        travel_budapest: Decimal,
-        travel_outside: Decimal,
-        travel_time: Decimal,
-        travel_time_outside: Decimal,
-        travel_time_sundays: Decimal,
-        accommodation: Decimal
+    work_during_hours: Decimal,
+    work_outside_hours: Decimal,
+    work_sundays: Decimal,
+    travel_budapest: Decimal,
+    travel_outside: Decimal,
+    travel_time: Decimal,
+    travel_time_outside: Decimal,
+    travel_time_sundays: Decimal,
+    accommodation: Decimal
+) -> None: pass
+
+async def update_other_work_prices_hun(
+    travel_budapest: Decimal,
+    travel_outside_km: Decimal,
+    tier_prices: t.Dict[HunPriceCategoryEnum, t.Dict[HunPriceTierEnum, Decimal]]
 ) -> None: pass
 
 async def select_daily_tasks_from_boats() -> t.Sequence[Row[t.Tuple[example_db.boat, example_db.schedule]]]: pass
@@ -352,7 +363,7 @@ async def select_boat_work_by_boat_name(boat_name: str) -> t.Sequence[example_db
 
 async def select_all_boats() -> t.Sequence[example_db.boat]: pass
 
-async def select_all_works() -> list | None: pass
+async def select_all_works() -> t.Sequence[example_db.work]: pass
 
 async def select_reminders_data() -> t.Sequence[example_db.calendar]: pass
 
@@ -384,6 +395,8 @@ async def select_next_possible_row_returned_packaging_id() -> int: pass
 
 async def select_existing_other_work_prices() -> Row[t.Tuple[example_db.other_work_prices]]: pass
 
+async def select_existing_other_work_prices_hun() -> Row[t.Tuple[example_db.other_work_prices_hun]] | None: pass
+
 async def select_schedule_by_boat_name(boat_name: str) -> t.Sequence[example_db.boat]: pass
 
 async def select_work_status_by_work_id(id: int) -> example_db.work_status | None: pass
@@ -396,6 +409,10 @@ async def select_all_clients() -> t.Sequence[example_db.client]: pass
 
 async def select_client_by_id(client_id: int) -> t.Optional[example_db.client]: pass
 
+async def select_fleet() -> t.Sequence[t.Tuple[example_db.boat, int]]: pass
+
 async def delete_items_by_id_from_specified_table(
     items_by_type: t.Dict[StorageItemTypeEnum, t.List[int]]
 ) -> None: pass
+
+async def upsert_next_otp_schedule() -> tuple[datetime, bool]: pass

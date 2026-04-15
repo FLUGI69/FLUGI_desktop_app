@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 import typing as t
 
@@ -40,7 +40,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         
         self.previous_data: t.Union[ToolsData, DeviceData] = None
         
-        self.setWindowTitle("Assign to tenant")
+        self.setWindowTitle("Bérlőhöz adás")
         
         self.setModal(True)
         
@@ -58,7 +58,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         When recording in the database, amounts are always in Hungarian Forints, 
         however, other currencies can also be specified here. (Current MNB exchange rate)
         """
-        self.label_currencies = QLabel("Currency (default HUF):")
+        self.label_currencies = QLabel("Pénznem (alapértelmezetten HUF):")
         self.dropdown_select_currencies = QComboBox()
         self.dropdown_select_currencies.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_select_currencies.setFixedHeight(35)
@@ -68,7 +68,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         self.dropdown_select_currencies_error.setObjectName("error")
         self.dropdown_select_currencies_error.setVisible(False)
         
-        self.label_tenant_name = QLabel("Tenant name:")
+        self.label_tenant_name = QLabel("Bérlő neve:")
         self.input_tenant_name = QLineEdit()
         self.input_tenant_name.setFixedHeight(35)
         self.input_tenant_name.setObjectName("input_unit")
@@ -79,7 +79,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         
         self.min_datetime = QDateTime.currentDateTime()
         
-        self.label_date_from = QLabel("Rental start:")
+        self.label_date_from = QLabel("Bérlés kezdete:")
         self.date_from = QDateTimeEdit()
         self.date_from.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.date_from.setCalendarPopup(True)
@@ -91,7 +91,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         self.rental_start_error_label.setObjectName("error")
         self.rental_start_error_label.setVisible(False)
 
-        self.label_date_to = QLabel("Rental end (if equal to rental start then daily rate):")
+        self.label_date_to = QLabel("Bérlés vége (ha egyenlő a bérlés kezdetével akkor napi ár):")
         self.date_to = QDateTimeEdit()
         self.date_to.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.date_to.setFixedHeight(35)
@@ -103,7 +103,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         self.rental_end_error_label.setObjectName("error")
         self.rental_end_error_label.setVisible(False)
 
-        self.label_price = QLabel("Rental fee (Net unit price)")
+        self.label_price = QLabel("Bérleti díj (Netto egységár)")
         self.input_price = QDoubleSpinBox()
         self.input_price.setDecimals(2)
         self.input_price.setSingleStep(0.01)
@@ -117,7 +117,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         self.price_error_label.setObjectName("error")
         self.price_error_label.setVisible(False)
         
-        self.label_quantity = QLabel("Quantity:")
+        self.label_quantity = QLabel("Mennyiség:")
         self.input_quantity = QDoubleSpinBox()
         self.input_quantity.setDecimals(4)
         self.input_quantity.setSingleStep(1)
@@ -212,7 +212,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
             
             if self.utility_calculator.is_zero(modal_quanity) == True:
                 
-                self.quantity_error_label.setText("You did not provide a quantity")
+                self.quantity_error_label.setText("Nem adtál hozzá mennyiséget")
                 self.quantity_error_label.setVisible(True)
                 
                 self.log.warning("You did not add a quantity for the selected tool(s) | device(s)")
@@ -221,7 +221,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         
         if self.is_quantity_zero  is not None and self.is_quantity_zero  is True:
             
-            self.quantity_error_label.setText("You do not have sufficient quantity")
+            self.quantity_error_label.setText("Nem rendelkezel megfelelő mennyiséggel")
             self.quantity_error_label.setVisible(True)
             
             self.log.warning("Insufficient quantity available for the selected tool(s) | device(s)")
@@ -230,7 +230,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
 
         if not tenant_name:
             
-            self.tenant_error_label.setText("Tenant name is required.")
+            self.tenant_error_label.setText("A bérlő neve kötelező.")
             self.tenant_error_label.setVisible(True)
             
             self.log.warning("Tenant name is required")
@@ -239,7 +239,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
 
         if rental_start < self.min_datetime:
             
-            self.rental_start_error_label.setText("Start date cannot be earlier than the current time")
+            self.rental_start_error_label.setText("A kezdődátum nem lehet korábbi, mint a jelenlegi időpont")
             self.rental_start_error_label.setVisible(True)
             
             self.log.warning("Rental start date is earlier than the current datetime.")
@@ -248,7 +248,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
 
         if rental_end < rental_start:
             
-            self.rental_end_error_label.setText("Return date cannot be earlier than the rental start")
+            self.rental_end_error_label.setText("A visszahozatal dátuma nem lehet korábbi mint a bérlés kezdete")
             self.rental_end_error_label.setVisible(True)
             
             self.log.warning("Input validation failed: 'rental_end' must be later than 'rental_start'")
@@ -257,7 +257,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
 
         if rental_price <= 0:
             
-            self.price_error_label.setText("Rental fee cannot be zero or negative")
+            self.price_error_label.setText("A bérleti díj nem lehet nulla vagy negatív")
             self.price_error_label.setVisible(True)
             
             self.log.warning("Rental price cannot be negative")
@@ -340,7 +340,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -356,7 +356,7 @@ class AddLeaseModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -394,4 +394,3 @@ class AddLeaseModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

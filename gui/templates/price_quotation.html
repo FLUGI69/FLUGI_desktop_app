@@ -12,7 +12,6 @@
             --secondary-color: #f4f4f4;
             --text-color: #3e3e3e;
             --border-color: #dddddd;
-            --page-margin: 15mm;
         }
 
         * {
@@ -22,6 +21,15 @@
         @page {
             size: A4;
             margin: 12mm 12mm 15mm 12mm;
+
+            {% if show_page_numbers %}
+            @bottom-center {
+                content: counter(page) " / " counter(pages);
+                font-size: 8pt;
+                color: #999999;
+                font-family: 'Inter', sans-serif;
+            }
+            {% endif %}
         }
 
         html,
@@ -66,9 +74,6 @@
             transform: translateX(-50%);
             text-align: center;
             width: 100%;
-        }
-
-        .quotation-header h1 {
             font-size: 30pt;
             font-weight: bold;
             color: var(--primary-color);
@@ -97,6 +102,7 @@
             justify-content: space-between;
             margin-top: 20px;
             margin-bottom: 20px;
+            page-break-inside: avoid;
         }
 
         .client-header .left-col,
@@ -141,6 +147,10 @@
             border-collapse: collapse;
             margin: 20px 0;
             page-break-inside: auto;
+        }
+
+        thead {
+            display: table-header-group;
         }
 
         tr {
@@ -219,29 +229,18 @@
 
         .project-description,
         .other-information {
-            text-align: justify;
+            text-align: left;
             margin-top: 20px;
         }
         
-        .other-information+h3 {
+        .other-information + h3 {
             font-size: 10pt;
             font-weight: bold;
             margin-bottom: 10px;
         }
 
-        .other-pricing-list.less-than-six {
-            float: left;
-            width: 100%;
-            list-style-type: none;
-            padding-left: 2rem;
-            padding-right: 2rem;
-            margin-top: 0;
-            font-size: 9pt;
-        }
-
-        .other-pricing-list.greater-than-six {
-            float: left;
-            width: 70%;
+        /* ── Pricing list (block flow, no floats) ── */
+        .other-pricing-list {
             list-style-type: none;
             padding-left: 2rem;
             padding-right: 2rem;
@@ -266,24 +265,39 @@
             white-space: nowrap; 
         }
 
-        .credithworthiness.greater-than-six,
-        .credithworthiness.less-than-six { 
-            color: #000000;
-            text-align: center;
+        .hun-bottom-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            page-break-inside: avoid;
         }
 
-        .credithworthiness.greater-than-six h3,
-        .credithworthiness.less-than-six h3 {
+        .hun-bottom-row .other-pricing-list {
+            flex: 1;
+            margin: 0;
+            padding-left: 0;
+            padding-right: 1rem;
+        }
+
+        .hun-bottom-row .credithworthiness {
+            width: 200px;
+            flex-shrink: 0;
+            margin-top: 0;
+        }
+
+        .credithworthiness { 
+            color: #000000;
+            text-align: center;
+            width: 100%;
+            margin-top: 40px;
+            page-break-inside: avoid;
+        }
+
+        .credithworthiness h3 {
             font-size: 9pt;
             margin: 3px 0;
             padding-bottom: 2px;
-        }
-
-        .credithworthiness.less-than-six,
-        .credithworthiness.greater-than-six {
-            float: none;
-            width: 100%;
-            margin-top: 50px;
         }
 
         .credithworthiness .logo {
@@ -373,54 +387,120 @@
         <strong>{{ _("OTHER INFORMATION:") }} </strong> {{ information }}
     </div>
     <h3>{{ _("THIS QUOTATION DOES NOT INCLUDE THE FOLLOWING ITEMS") }}</h3>
-    <ul class="other-pricing-list {{ data_lenght }}">
-        <li>
-            <span class="label">{{ _("Work during working hours:") }}</span>
-            <span class="value {{ data_lenght }}">{{ currency_symbol }} {{ prices.work_during_hours }} {{ _("/ person / hour") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Outside working hours & Saturdays:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.work_outside_hours }} {{ _("/ person / hour") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Sundays & public holidays +100%:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.work_sundays }} {{ _("/ person / hour") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Travel within Budapest:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.travel_budapest }} {{ _("/ occasion") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Travel outside Budapest / abroad:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.travel_outside }} {{ _("/ km") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Travel time:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.travel_time }} {{ _("/ person / hour") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Travel time outside working hours & Saturdays +50%:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.travel_time_outside }} {{ _("/ person / hour") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Travel time Sundays & public holidays +100%:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.travel_time_sundays }} {{ _("/ person / hour") }}</span>
-        </li>
-        <li>
-            <span class="label">{{ _("Accommodation:") }}</span>
-            <span class="value">{{ currency_symbol }} {{ prices.accommodation }} {{ _("/ person / night") }}</span>
-        </li>
-    </ul>
-    <div class="credithworthiness {{ data_lenght }}">
-        <div class="logo">
-            <img src="data:image/svg+xml;base64,{{ cred_logo }}" alt="Credit Logo" style="width:160px; height:auto;">
+           {% if hun_prices %}
+        <div class="hun-bottom-row">
+            <ul class="other-pricing-list">
+                <li><strong>Felmérés és szállítás rezsióradíja:</strong></li>
+                <li>
+                    <span class="label">Hétköznap munkaidőben H-P 08:00 - 17:00:</span>
+                    <span class="value">{{ hun_prices.survey_delivery.weekday|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li>
+                    <span class="label">Munkaidőn kívül és szombaton +50%:</span>
+                    <span class="value">{{ hun_prices.survey_delivery.weekend|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li>
+                    <span class="label">Vasárnap ünnepnapokon +100%:</span>
+                    <span class="value">{{ hun_prices.survey_delivery.sunday|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li style="padding-top: 8px;"><strong>Javítás és karbantartás rezsióradíja:</strong></li>
+                <li>
+                    <span class="label">Hétköznap munkaidőben H-P 08:00 - 17:00:</span>
+                    <span class="value">{{ hun_prices.repair_maintenance.weekday|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li>
+                    <span class="label">Munkaidőn kívül és szombaton +50%:</span>
+                    <span class="value">{{ hun_prices.repair_maintenance.weekend|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li>
+                    <span class="label">Vasárnap ünnepnapokon +100%:</span>
+                    <span class="value">{{ hun_prices.repair_maintenance.sunday|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li style="padding-top: 4px;"><em>Minden megkezdett munkaóra egy teljes munkaórának számít</em></li>
+                <li style="padding-top: 8px;"><strong>Kiszállási díjak:</strong></li>
+                <li>
+                    <span class="label">Budapest területén:</span>
+                    <span class="value">{{ hun_prices.travel_budapest|hun_fmt }} Ft + áfa / alkalom</span>
+                </li>
+                <li>
+                    <span class="label">Vidékre:</span>
+                    <span class="value">{{ hun_prices.travel_outside_km|hun_fmt }} Ft + áfa / km</span>
+                </li>
+                <li style="padding-top: 8px;"><strong>Utazási idő vidékre:</strong></li>
+                <li>
+                    <span class="label">Hétköznap munkaidőben H-P 08:00 - 17:00:</span>
+                    <span class="value">{{ hun_prices.travel_time.weekday|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li>
+                    <span class="label">Munkaidőn kívül és szombaton +50%:</span>
+                    <span class="value">{{ hun_prices.travel_time.weekend|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+                <li>
+                    <span class="label">Vasárnap ünnepnapokon +100%:</span>
+                    <span class="value">{{ hun_prices.travel_time.sunday|hun_fmt }} Ft + áfa / fő / óra</span>
+                </li>
+            </ul>
+            <div class="credithworthiness {{ data_lenght }}">
+                <div class="logo">
+                    <img src="data:image/svg+xml;base64,{{ cred_logo }}" alt="Credit Logo" style="width:160px; height:auto;">
+                </div>
+                <h3>EXAMPLE COMPANY Ltd.</h3>
+                <p>VAT: 132456465-212-456</p>
+                <p>D-U-N-S Number: 789465132</p>
+                <p>&copy; Dun & Bradstreet</p>
+                <p>{{ current_date }}</p>
+            </div>
         </div>
-        <h3>EXAMPLE COMPANY Ltd.</h3>
-        <p>VAT: 132456465-212-456</p>
-        <p>D-U-N-S Number: 789465132</p>
-        <p>&copy; Dun & Bradstreet</p>
-        <p>{{ current_date }}</p>
-    </div>
+        {% else %}
+        <ul class="other-pricing-list">
+            <li>
+                <span class="label">{{ _("Munka munkaidőben:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.work_during_hours }} {{ _("/ fő / óra") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Munkaidőn kívül és szombaton:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.work_outside_hours }} {{ _("/ fő / óra") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Vasárnap és ünnepnapokon +100%:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.work_sundays }} {{ _("/ fő / óra") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Utazás Budapesten belül:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.travel_budapest }} {{ _("/ alkalom") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Utazás Budapesten kívül / külföld:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.travel_outside }} {{ _("/ km") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Utazási idő:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.travel_time }} {{ _("/ fő / óra") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Utazási idő munkaidőn kívül és szombaton +50%:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.travel_time_outside }} {{ _("/ fő / óra") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Utazási idő vasárnap és ünnepnapokon +100%:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.travel_time_sundays }} {{ _("/ fő / óra") }}</span>
+            </li>
+            <li>
+                <span class="label">{{ _("Szállás:") }}</span>
+                <span class="value">{{ currency_symbol }} {{ prices.accommodation }} {{ _("/ fő / éjszaka") }}</span>
+            </li>
+        </ul>
+        <div class="credithworthiness {{ data_lenght }}">
+            <div class="logo">
+                <img src="data:image/svg+xml;base64,{{ cred_logo }}" alt="Credit Logo" style="width:160px; height:auto;">
+            </div>
+            <h3>EXAMPLE COMPANY Ltd.</h3>
+            <p>VAT: 132456465-212-456</p>
+            <p>D-U-N-S Number: 789465132</p>
+            <p>&copy; Dun & Bradstreet</p>
+            <p>{{ current_date }}</p>
+        </div>
+        {% endif %}
     </div>
 </body>
 

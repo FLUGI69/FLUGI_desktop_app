@@ -1,6 +1,6 @@
+import asyncio
 import json
 import logging
-import base64
 
 from db.async_redis import AsyncRedisClient
 from utils.dc.returnable_packaging import ReturnablePackagingData, ReturnablePackagingCacheData
@@ -11,11 +11,16 @@ class ReturnablePackagingCacheService(LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    KEY_PREFIX = "returnable_packaging:"
+    
+    def __init__(self, 
+        redis_client: AsyncRedisClient,
+        storage_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "returnable_packaging:"
+        
+        self.storage_lock = storage_lock
 
     def _make_key(self, returnable_packaging_cache_id: str) -> str:
         
@@ -43,7 +48,7 @@ class ReturnablePackagingCacheService(LoggerMixin):
                 
                 if returnable_packaging_cache_id in decoded_json and "items" in decoded_json[returnable_packaging_cache_id]:
                     
-                    item_data = self.redis_client.decode_from_cache(decoded_json[returnable_packaging_cache_id]["items"])
+                    item_data = decoded_json[returnable_packaging_cache_id]["items"]
                     
                     return ReturnablePackagingCacheData(
                         items = [ReturnablePackagingData(**entry) for entry in item_data]
@@ -89,13 +94,14 @@ class ReturnablePackagingCacheService(LoggerMixin):
                 wrapped = {
                     returnable_packaging_cache_id: {
                         "items": [
-                            self.redis_client.encode_for_cache(item.model_dump())
+                            item.model_dump(mode = "json")
                             for item in raw_data
                         ]
                     }
                 }
                 
-                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+                async with self.storage_lock:
+                    await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
                 
                 self.log.debug("Returnable packaging data cached for %s" % returnable_packaging_cache_id)
                 
@@ -115,4 +121,5 @@ class ReturnablePackagingCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.storage_lock:
+            await self.redis_client.clear_cache(key)

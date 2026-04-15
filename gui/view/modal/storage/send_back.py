@@ -34,7 +34,7 @@ class SendBackModal(QDialog, LoggerMixin):
         
         self.item_quantity = None
         
-        self.setWindowTitle("Return")
+        self.setWindowTitle("Visszaküldés")
         
         self.setModal(True)
         
@@ -52,7 +52,7 @@ class SendBackModal(QDialog, LoggerMixin):
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
 
-        self.label = QLabel("Return packaging")
+        self.label = QLabel("Göngyöleg visszaküldése")
         self.label.setObjectName("BoatTitleLabel")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setWordWrap(True)
@@ -107,6 +107,7 @@ class SendBackModal(QDialog, LoggerMixin):
         
         font = QFont()
         font.setPointSize(10)
+        font.setBold(True)
         
         for returnable in returnable_list:
             
@@ -168,7 +169,7 @@ class SendBackModal(QDialog, LoggerMixin):
                 
                 self.list_widget.addItem(list_item)
                 self.list_widget.setItemWidget(list_item, container)
-                self.list_widget.setSpacing(2)
+                self.list_widget.setSpacing(0)
                 
                 list_item.setData(Qt.ItemDataRole.UserRole, returnable)
 
@@ -220,7 +221,7 @@ class SendBackModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -236,7 +237,7 @@ class SendBackModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

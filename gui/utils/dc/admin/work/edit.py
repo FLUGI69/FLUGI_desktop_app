@@ -10,6 +10,7 @@ from .status import AdminWorkStatus
 class AdminEditWorkData(DataclassBaseModel):
     work_id: int
     leader: str
+    order_date: datetime
     description: str | None = None
     start_date: datetime | None = None
     finished_date: datetime | None = None

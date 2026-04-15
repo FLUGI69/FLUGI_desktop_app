@@ -1,36 +1,50 @@
-from sqlalchemy import select, exists
-from sqlalchemy.orm import selectinload
-from sqlalchemy.engine import Row
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload, load_only, noload
 
 import typing as t
 
 from db.async_query_base.async_query_base import AsyncQueryBase
 from db.tables import example_db
-# TODO rewrite this query 
+
 class select_all_works(AsyncQueryBase):
 
-    async def query(self) -> list:
+    async def query(self) -> t.Sequence[example_db.work]:
     
         query_result = (
             select(
                 
-                example_db.boat
+                example_db.work
                 
-            ).where(
-                
-                exists().where(
-                    example_db.work.boat_id == example_db.boat.id
-                )
             ).options(
                 
-                selectinload(
+                load_only(
                     
-                    example_db.boat.works
-                )
+                    example_db.work.id,
+                    example_db.work.boat_id,
+                    example_db.work.description,
+                    example_db.work.start_date,
+                    example_db.work.finished_date,
+                    example_db.work.transfered,
+                    example_db.work.is_contractor
+                ),
+                
+                joinedload(
+                    
+                    example_db.work.boat
+                    
+                ).load_only(
+                    
+                    example_db.boat.name
+                ),
+                
+                noload(example_db.work.accessories),
+                noload(example_db.work.work_accessories),
+                noload(example_db.work.status),
+                noload(example_db.work.images)
             )
         )
 
         result = await self.session.execute(query_result)
         
-        return result.all()
+        return result.unique().scalars().all()
         

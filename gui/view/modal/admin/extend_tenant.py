@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import sys
 import logging
 from pathlib import Path
@@ -33,7 +33,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
         
         self.previous_data: TenantData | None = None
         
-        self.setWindowTitle("Extend rental:")
+        self.setWindowTitle("Bérlés meghosszabbítása:")
         
         self.setModal(True)
         
@@ -129,7 +129,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
         bottom_layout.setContentsMargins(20, 20, 20, 20)
         bottom_layout.setSpacing(15)
 
-        self.label_quantity = QLabel("Rented quantity:")
+        self.label_quantity = QLabel("Bérelt mennyiség:")
         
         self.input_quantity = QDoubleSpinBox()
         self.input_quantity.setDecimals(4)
@@ -139,7 +139,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
         self.input_quantity.setObjectName("input_quantity")
         self.input_quantity.setFixedHeight(35)
 
-        self.label_rental_end_date = QLabel("Rental end:")
+        self.label_rental_end_date = QLabel("Bérlés vége:")
         
         self.rental_end = QDateTimeEdit()
         self.rental_end.setFixedHeight(35)
@@ -208,7 +208,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
         
         if current_date_input == self.default_datetime:
 
-            self.rental_end_error.setText("Rental end cannot be the same as the previous")
+            self.rental_end_error.setText("Bérlés vége nem lehet ugyan annyi mint az előző")
             self.rental_end_error.setVisible(True)
 
             self.log.warning("Input validation failed: rental_end (%s) cannot be the same as previous rental_end (%s)" % (
@@ -221,7 +221,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
 
         elif current_date_input <= self.start_date:
 
-            self.rental_end_error.setText("Rental end nem lehet ugyan annyi vagy kevesebb mint a kezdete")
+            self.rental_end_error.setText("Bérlés vége nem lehet ugyan annyi vagy kevesebb mint a kezdete")
             self.rental_end_error.setVisible(True)
 
             self.log.warning("Input validation failed: rental_end (%s) cannot be before or same as rental_start (%s)" % (
@@ -234,7 +234,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
 
         elif current_date_input.replace(microsecond = 0) < self.default_datetime.replace(microsecond = 0):
 
-            self.rental_end_error.setText("Rental end cannot be earlier than the current rental end")
+            self.rental_end_error.setText("Bérlés vége nem lehet elöbb mint az eddigi bérlés vége")
             self.rental_end_error.setVisible(True)
 
             self.log.warning("Input validation failed: rental_end (%s) cannot be earlier than previous rental_end (%s)" % (
@@ -271,7 +271,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
             
             self.end_date = self.previous_data.rental_end
          
-            rental_price_label_text = "Rental price (Net price for total duration):" if self.previous_data.rental_end is not None else "Rental price (Net price daily rate):"
+            rental_price_label_text = "Bérlés ára (Netto ár teljes időtartamra):" if self.previous_data.rental_end is not None else "Bérlés ára (Netto ár napi ár):"
             
             self.label_rental_price.setText(rental_price_label_text)
 
@@ -325,7 +325,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -341,7 +341,7 @@ class ExtendTenantModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

@@ -3,6 +3,7 @@ import logging
 import asyncio
 import inspect
 import signal
+import multiprocessing
 import typing as t
 from openai import AsyncOpenAI
 from qasync import QEventLoop
@@ -27,6 +28,7 @@ from utils.handlers.math import UtilityCalculator
 from services.qthread_manager import QthreadManager
 from utils.handlers.spinner import Spinner
 from websocket.ws_client import QtApplicationSocketClient
+from services.backgound_tasks.otp_zip_worker import OTPZipWorker
 from services.backgound_tasks.playwright_context_manager import PlayWrightContextManager
 from config import Config
 
@@ -64,16 +66,20 @@ class QtApplication(LoggerMixin):
         
         self._shutdown_complete = asyncio.Event()
         
+        self.storage_lock = asyncio.Lock()
+        self.admin_storage_lock = asyncio.Lock()
+        self.fleet_lock = asyncio.Lock()
         self.reminder_lock = asyncio.Lock()
-        
         self.rental_lock = asyncio.Lock()
+        self.schedule_lock = asyncio.Lock()
+        self.marine_traffic_lock = asyncio.Lock()
         
         self.playwright_lock = asyncio.Lock()
         
         self.google_lock = asyncio.Lock()
         
         self.openapi_lock = asyncio.Lock()
-        
+
         self._setup_root_logger()
         
         self.notifier = CalendarNotifier()
@@ -96,6 +102,8 @@ class QtApplication(LoggerMixin):
         
         self.redis_client = AsyncRedisClient()
         
+        self.otp_zip_worker: OTPZipWorker | None = None
+        
         self.websocket_client: QtApplicationSocketClient = None
     
         self.openai = AsyncOpenAI(api_key = Config.openapi.key)
@@ -108,6 +116,8 @@ class QtApplication(LoggerMixin):
         if self.templates_path:
             
             self.jinja_env = Environment(loader = FileSystemLoader(self.templates_path))
+            
+            self.jinja_env.filters["hun_fmt"] = lambda val: "{:,.0f}".format(float(val)).replace(",", " ")
             
             for path in self.templates_path.rglob("*.html"):
                 
@@ -174,8 +184,7 @@ class QtApplication(LoggerMixin):
         coro_or_fn: t.Union[
             t.Callable[[], t.Coroutine[object, object, None]],
             t.Coroutine[object, object, None]
-        ]
-        ) -> asyncio.Task:
+        ]) -> asyncio.Task:
         """
         Accepts:
           - a coroutine function to be called later 
@@ -232,13 +241,13 @@ class QtApplication(LoggerMixin):
                     
                     self.rental_worker = RentalWorker(
                         redis_client = self.redis_client,
-                        app_lock = self.rental_lock,
+                        rental_lock = self.rental_lock,
                         utility_calculator = self.utility_calculator
                     )
                     
                     self.reminder_worker = ReminderWorker(
                         redis_client = self.redis_client,
-                        app_lock = self.reminder_lock,
+                        reminder_lock = self.reminder_lock,
                         utility_calculator = self.utility_calculator
                     )
                     
@@ -249,7 +258,7 @@ class QtApplication(LoggerMixin):
                     self.add_background_task(self.reminder_worker._run_loop)
                     
                     self.add_background_task(self.rental_worker._run_loop)
-                    
+
                     if self.websocket_enabled == True:
                     
                         self.websocket_client = QtApplicationSocketClient(
@@ -316,6 +325,7 @@ class QtApplication(LoggerMixin):
                 log = self.log,
                 reminder_worker = getattr(self, 'reminder_worker', None),
                 rental_worker = getattr(self, 'rental_worker', None),
+                otp_zip_worker = getattr(self, 'otp_zip_worker', None),
                 redis_client = getattr(self, "redis_client", None),
                 playwright_manager = getattr(self, "playwright_manager", None),
                 websocket_client = getattr(self, "websocket_client", None),
@@ -332,6 +342,10 @@ class QtApplication(LoggerMixin):
             self.log.exception("Shutdown failed: %s" % str(e))
             
         finally:
+            
+            self.log.warning("Exit")
+            
+            self.log.warning("%s exit" % multiprocessing.current_process().name)
             
             await self._flush_logs()
             

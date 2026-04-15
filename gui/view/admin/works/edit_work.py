@@ -1,4 +1,4 @@
-﻿import os
+import os
 import asyncio
 import io
 import aiofiles
@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QListWidgetItem
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QDate, QTime, QSize, QTimer, QDateTime
+from PyQt6.QtCore import Qt, pyqtSignal, QDate, QTime, QSize, QTimer, QDateTime, QEvent
 from PyQt6.QtGui import QCursor, QPixmap, QIcon, QFont, QFontMetrics
 
 from utils.logger import LoggerMixin
@@ -48,6 +48,7 @@ from ...tables.admin.work_notes import AdminEditWorkNotes
 from ...modal.confirm_action import ConfirmActionModal
 from utils.enums.quantity_range import QuantityRange
 from db import queries
+from .translate_work_description import TranslateWorkDescription
 
 if t.TYPE_CHECKING:
     
@@ -73,13 +74,13 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         self.current_work_id = None
         
-        self._edit_work_lock = parent.storage_lock
-        
         self.spinner = parent.spinner
         
         self.utility_calculator = parent.utility_calculator
         
         self.material_cache_service = parent.material_cache_service
+        
+        self.translator = TranslateWorkDescription(parent.openai, parent.openapi_lock)
         
         self.changed_notes: t.List[AdminWorkStatusNote] = []
         
@@ -107,6 +108,16 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         self.all_collumns = None
         
+        self._items_per_page = 10
+        
+        self._top_page = 0
+        
+        self._bottom_page = 0
+        
+        self._top_full_data: t.List[MaterialData] = []
+        
+        self._bottom_full_data: t.List[MaterialData] = []
+        
         self.__init_view()
         
         self.table.boat_selected.connect(self._handle_toogle_selected)
@@ -118,11 +129,33 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
 
         return QIcon(os.path.join(Config.icon.icon_dir, name))   
     
+    def eventFilter(self, obj, event):
+        
+        if event.type() == QEvent.Type.Wheel:
+            
+            viewports = [
+                self.work_components_list_top.viewport(),
+                self.work_components_list_bottom.viewport(),
+                self.picture_list.viewport()
+            ]
+            
+            if obj in viewports or isinstance(obj, (QDoubleSpinBox, QComboBox)):
+                
+                scroll = self.findChild(QScrollArea)
+                
+                if scroll is not None:
+                    
+                    scroll.verticalScrollBar().event(event)
+                
+                return True
+        
+        return super().eventFilter(obj, event)
+    
     def __init_view(self):
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(Config.styleSheets.work_scroll)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet(Config.styleSheets.work_scroll)
 
         container = QWidget()
         container.setObjectName("MaterialTableContainer")
@@ -131,10 +164,10 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         container_layout = QVBoxLayout(container)
         container_layout.setSpacing(20)
 
-        scroll.setWidget(container)
+        self.scroll_area.setWidget(container)
 
         main_layout = QVBoxLayout(self)
-        main_layout.addWidget(scroll)
+        main_layout.addWidget(self.scroll_area)
 
         form_frame = QFrame()
         form_frame.setObjectName("WorkFormFrame")
@@ -180,20 +213,37 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         self.changed_notes.append(note)
     
     def set_project_leader_section(self):
-
+        
         layout = QVBoxLayout()
         layout.setSpacing(8)
 
-        label = QLabel("Project leader (Assigned person responsible for the work)")
+        h_layout = QHBoxLayout()
+        h_layout.setSpacing(10)
+
+        label = QLabel("Projekt vezető (Kijelölt ember aki felel a munkáért)*")
         label.setObjectName("BoatTitleLabel")
 
         self.leader_text_edit = QTextEdit()
+        self.leader_text_edit.setAcceptRichText(False)
         self.leader_text_edit.setFixedHeight(60)
-        self.leader_text_edit.setPlaceholderText("John Smith (Salary deduction)")
+        self.leader_text_edit.setPlaceholderText("Baté Dávid (Fizetés levonás)")
         self.leader_text_edit.setStyleSheet(Config.styleSheets.work_text_edit)
+    
+        date_label = QLabel("Megrendelés dátuma")
+        date_label.setObjectName("BoatTitleLabel")
+    
+        self.leader_date_edit = QDateTimeEdit()
+        self.leader_date_edit.setCalendarPopup(True)
+        self.leader_date_edit.setDateTime(QDateTime.currentDateTime())
+        self.leader_date_edit.setFixedHeight(35)
+        self.leader_date_edit.setObjectName("LeaderDateEdit")
 
-        layout.addWidget(label)
-        layout.addWidget(self.leader_text_edit)
+        h_layout.addWidget(label)
+        h_layout.addWidget(self.leader_text_edit)
+        h_layout.addWidget(date_label)
+        h_layout.addWidget(self.leader_date_edit)
+
+        layout.addLayout(h_layout)
 
         return layout
 
@@ -202,11 +252,12 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         layout = QVBoxLayout()
         layout.setSpacing(8)
 
-        label = QLabel("Work description")
+        label = QLabel("Munkaleírás")
         label.setObjectName("BoatTitleLabel")
 
         self.description_text_edit = QTextEdit()
-        self.description_text_edit.setPlaceholderText("The AC broke on one of our valued client's ships")
+        self.description_text_edit.setAcceptRichText(False)
+        self.description_text_edit.setPlaceholderText("Elromlott az egyik nagyon kedves kliens hajóján a klíma")
         self.description_text_edit.setFixedHeight(300)
         self.description_text_edit.setStyleSheet(Config.styleSheets.work_text_edit)
 
@@ -220,7 +271,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         section_layout = QVBoxLayout()
         section_layout.setSpacing(10)
 
-        label = QLabel("Work-related images")
+        label = QLabel("Munkával kapcsolatos képek")
         label.setObjectName("BoatTitleLabel")
         
         section_layout.addWidget(label)
@@ -239,10 +290,11 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         self.picture_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.picture_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.picture_list.setStyleSheet(Config.styleSheets.work_form_list)
+        self.picture_list.viewport().installEventFilter(self)
 
         h_layout.addWidget(self.picture_list)
 
-        upload_button = QPushButton("Upload image")
+        upload_button = QPushButton("Kép feltöltése")
         upload_button.setObjectName("SelectFormItem")
         upload_button.setFixedHeight(35)
         upload_button.setFixedWidth(200)
@@ -261,11 +313,11 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         layout = QVBoxLayout()
         layout.setSpacing(8)
 
-        label = QLabel("Work components (available materials in storage)")
+        label = QLabel("Munka komponensek (Raktárban elérhető Anyagok)")
         label.setObjectName("BoatTitleLabel")
         
         self.components_search_input = QLineEdit()
-        self.components_search_input.setPlaceholderText("Search...")
+        self.components_search_input.setPlaceholderText("Keresés...")
         self.components_search_input.setObjectName("WorkSearch")
         self.components_search_input.setStyleSheet(Config.styleSheets.work_add_components_search)
         self.components_search_input.returnPressed.connect(self._handle_enter_pressed)
@@ -273,7 +325,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         self.refresh_btn = QToolButton()
         self.refresh_btn.setObjectName("refresh")
         self.refresh_btn.setIcon(AdminEditWorkContent.icon("refresh.svg"))
-        self.refresh_btn.setToolTip("Refresh")
+        self.refresh_btn.setToolTip("Frissítés")
         self.refresh_btn.setAutoRaise(True)
         self.refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_btn.setIconSize(QSize(25, 25))
@@ -291,26 +343,79 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         self.work_components_list_top = QListWidget()
         self.work_components_list_top.setObjectName("FormItemList")
-        self.work_components_list_top.setFixedHeight(300)
-        self.work_components_list_top.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.work_components_list_top.setFixedHeight(410)
+        self.work_components_list_top.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.work_components_list_top.setHorizontalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.work_components_list_top.setStyleSheet(Config.styleSheets.work_form_list)
+        self.work_components_list_top.viewport().installEventFilter(self)
         
-        selected_label = QLabel("Materials used for work")
+        selected_label = QLabel("Munkához használt anyagok")
         selected_label.setObjectName("BoatTitleLabel")
         
         self.work_components_list_bottom = QListWidget()
         self.work_components_list_bottom.setObjectName("FormItemList")
-        self.work_components_list_bottom.setFixedHeight(300)
-        self.work_components_list_bottom.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.work_components_list_bottom.setFixedHeight(410)
+        self.work_components_list_bottom.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.work_components_list_bottom.setHorizontalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.work_components_list_bottom.setStyleSheet(Config.styleSheets.work_form_list)
-    
+        self.work_components_list_bottom.viewport().installEventFilter(self)
+
+        top_pagination = QHBoxLayout()
+        top_pagination.setAlignment(Qt.AlignmentFlag.AlignCenter)
+       
+        self.top_prev_btn = QPushButton()
+        self.top_prev_btn.setIcon(AdminEditWorkContent.icon("chevron-left.svg"))
+        self.top_prev_btn.setFixedWidth(60)
+        self.top_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.top_prev_btn.clicked.connect(lambda: self._change_top_page(-1))
+        
+        self.top_page_label = QLabel("1 / 1")
+        self.top_page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.top_page_label.setFixedWidth(80)
+       
+        self.top_next_btn = QPushButton()
+        self.top_next_btn.setIcon(AdminEditWorkContent.icon("chevron-right.svg"))
+        self.top_next_btn.setFixedWidth(60)
+        self.top_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.top_next_btn.clicked.connect(lambda: self._change_top_page(1))
+
+        
+        bottom_pagination = QHBoxLayout()
+        bottom_pagination.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.bottom_prev_btn = QPushButton()
+        self.bottom_prev_btn.setIcon(AdminEditWorkContent.icon("chevron-left.svg"))
+        self.bottom_prev_btn.setFixedWidth(60)
+        self.bottom_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.bottom_prev_btn.clicked.connect(lambda: self._change_bottom_page(-1))
+        
+        self.bottom_page_label = QLabel("1 / 1")
+        self.bottom_page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.bottom_page_label.setFixedWidth(80)
+        
+        self.bottom_next_btn = QPushButton()
+        self.bottom_next_btn.setIcon(AdminEditWorkContent.icon("chevron-right.svg"))
+        self.bottom_next_btn.setFixedWidth(60)
+        self.bottom_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.bottom_next_btn.clicked.connect(lambda: self._change_bottom_page(1))
+      
+        top_pagination.addWidget(self.top_prev_btn)
+        top_pagination.addWidget(self.top_page_label)
+        top_pagination.addWidget(self.top_next_btn)
+        
+        bottom_pagination.addWidget(self.bottom_prev_btn)
+        bottom_pagination.addWidget(self.bottom_page_label)
+        bottom_pagination.addWidget(self.bottom_next_btn)
+        
         v_box.addWidget(self.work_components_list_top)
+        v_box.addStretch(20)
+        v_box.addLayout(top_pagination)
         v_box.addStretch(10)
         v_box.addWidget(selected_label)
         v_box.addStretch(10)
         v_box.addWidget(self.work_components_list_bottom)
+        v_box.addStretch(20)
+        v_box.addLayout(bottom_pagination)
     
         layout.addLayout(label_search_h)
         layout.addLayout(v_box)
@@ -323,7 +428,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         section_layout.setSpacing(10)
         section_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         
-        transfered_label = QLabel("In progress (required for writing notes - 'yes'*):")
+        transfered_label = QLabel("Folyamatban (Jegyzet íráshoz - 'igen'*):")
         transfered_label.setObjectName("BoatTitleLabel")
         
         self.dropdown_transfered = QComboBox()
@@ -331,12 +436,14 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         self.dropdown_transfered.setStyleSheet(Config.styleSheets.dropdown_style)
         self.dropdown_transfered.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_transfered.addItem("", None)
-        self.dropdown_transfered.addItem("Yes", True)
-        self.dropdown_transfered.addItem("No", False)
+        self.dropdown_transfered.addItem("Igen", True)
+        self.dropdown_transfered.addItem("Nem", False)
         self.dropdown_transfered.setFixedHeight(35)
-        self.dropdown_transfered.setFixedWidth(100)
+        self.dropdown_transfered.setFixedWidth(120)
+        self.dropdown_transfered.installEventFilter(self)
+        self.dropdown_transfered.currentIndexChanged.connect(self._handle_transfered_changed)
         
-        is_contractor_label = QLabel("Subcontractor work:")
+        is_contractor_label = QLabel("Alvállalkozó munkája:")
         is_contractor_label.setObjectName("BoatTitleLabel")
         
         self.dropdown_is_contractor = QComboBox()
@@ -344,14 +451,15 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         self.dropdown_is_contractor.setStyleSheet(Config.styleSheets.dropdown_style)
         self.dropdown_is_contractor.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_is_contractor.addItem("", None)
-        self.dropdown_is_contractor.addItem("Yes", True)
-        self.dropdown_is_contractor.addItem("No", False)
+        self.dropdown_is_contractor.addItem("Igen", True)
+        self.dropdown_is_contractor.addItem("Nem", False)
         self.dropdown_is_contractor.setFixedHeight(35)
-        self.dropdown_is_contractor.setFixedWidth(100)
+        self.dropdown_is_contractor.setFixedWidth(120)
+        self.dropdown_is_contractor.installEventFilter(self)
         
         self.min_dt = QDateTime(QDate(2000, 1, 1), QTime(0, 0))
         
-        work_start_date_label = QLabel("Start (Optional):")
+        work_start_date_label = QLabel("Kezdete (Nem kötelező megadni):")
         work_start_date_label.setObjectName("BoatTitleLabel")
         
         self.work_start_date = QDateTimeEdit()
@@ -363,7 +471,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         self.work_start_date.setFixedWidth(150)
         self.work_start_date.setMinimumDateTime(self.min_dt)
         
-        work_finished_date_label = QLabel("End (Optional):")
+        work_finished_date_label = QLabel("Vége (Nem kötelező megadni):")
         work_finished_date_label.setObjectName("BoatTitleLabel")
         
         self.work_finished_date = QDateTimeEdit()
@@ -386,17 +494,43 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
 
         return section_layout
     
+    def _handle_transfered_changed(self, index: int):
+        
+        is_transfered = self.dropdown_transfered.currentData() is True
+        self.status_notes_section.setVisible(is_transfered)
+        
+        if self.current_work_id is not None and self.previous_admin_work_data is not None:
+            asyncio.ensure_future(self._update_transfered_in_db(is_transfered))
+    
+    async def _update_transfered_in_db(self, transfered: bool):
+        
+        try:
+            
+            await queries.update_work_transfered_by_id(
+                work_id = self.current_work_id,
+                transfered = transfered
+            )
+            
+            self.previous_admin_work_data.transfered = transfered
+            
+            self.log.debug("Transfered updated to %s for work_id %s" % (str(transfered), str(self.current_work_id)))
+            
+        except Exception as e:
+            
+            self.log.exception("Failed to update transfered state: %s" % str(e))
+    
     def set_status_notes_section(self):
         
         status_notes_container = QWidget()
     
         v_layout = QVBoxLayout()
 
-        label = QLabel("Work process notes")
+        label = QLabel("Munka folyamatának jegyzetei")
         label.setObjectName("BoatTitleLabel")
 
         self.notes_text_edit = QTextEdit()
-        self.notes_text_edit.setPlaceholderText("E.g.: Delivered. Botond started the refurbishment. The part has been ordered.")
+        self.notes_text_edit.setAcceptRichText(False)
+        self.notes_text_edit.setPlaceholderText("Pl.:Elszállítva Botond megkezdte a felújjítását. Alkatrész meg lett rendelve")
         self.notes_text_edit.setFixedHeight(60)
         self.notes_text_edit.setStyleSheet(Config.styleSheets.work_text_edit)
         
@@ -421,7 +555,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         confirm_btn.setStyleSheet(Config.styleSheets.work_btn)
         confirm_btn.clicked.connect(lambda: asyncio.ensure_future(self.__btn_callback(0)))
 
-        cancel_btn = QPushButton("Delete")
+        cancel_btn = QPushButton("Törlés")
         cancel_btn.setObjectName("WorkBtn")
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.setFixedHeight(35)
@@ -431,8 +565,31 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
 
         layout.addWidget(confirm_btn)
         layout.addWidget(cancel_btn)
+        
+        self.form_error_label = QLabel()
+        self.form_error_label.setObjectName("error")
+        self.form_error_label.setVisible(False)
+        
+        font = QFont()
+        font.setPointSize(10)
+        font.setBold(True)
+        
+        self.form_error_label.setFont(font)
+        self.form_error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.form_success_label = QLabel()
+        self.form_success_label.setObjectName("success")
+        self.form_success_label.setVisible(False)
+        self.form_success_label.setFont(font)
+        self.form_success_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        v_layout = QVBoxLayout()
+        v_layout.addLayout(layout)
+        v_layout.addWidget(self.form_error_label)
+        v_layout.addWidget(self.form_success_label)
+        v_layout.setSpacing(10)
 
-        return layout
+        return v_layout
     
     def set_fields_data_from_prev_reference(self):
 
@@ -513,6 +670,8 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
             self.table.setRowCount(0)
             
         self.leader_text_edit.clear()
+        
+        self.leader_date_edit.setDateTime(QDateTime.currentDateTime())
 
         self.deleted_img_bytes.clear()
         
@@ -545,15 +704,17 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
 
                 if isinstance(widget, ImageItemWidget):
                     
-                    if widget.file_path is not None or widget.file_path != "":
-                        
-                        file = widget.file_path
+                    file = None
                     
                     if widget.image_id is not None:
                         
                         file = widget.image_id
+                    
+                    elif widget.file_path is not None and widget.file_path != "":
                         
-                    if file:
+                        file = widget.file_path
+                        
+                    if file is not None:
                         
                         self._handle_delete_image(file)
 
@@ -569,6 +730,8 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         if self._btn_lock.locked():
             
             self.log.warning("Button callback ignored because another operation is running")
+            
+            self.spinner.hide()
             
             return
 
@@ -593,93 +756,131 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         return None
     
     async def compare_fields_data_with_previous_reference(self):
-      
-        if self.previous_admin_work_data is not None:
-            
-            min_date = self.min_dt.toPyDateTime()
+        
+        self.form_error_label.setVisible(False)
+        self.form_success_label.setVisible(False)
+        
+        try:
+        
+            if self.previous_admin_work_data is not None:
                 
-            leader_field = self.leader_text_edit.toPlainText().strip()
-            description_field = self.description_text_edit.toPlainText().strip()
-            start_date_field = self.work_start_date.dateTime().toPyDateTime()
-            finished_date_field = self.work_finished_date.dateTime().toPyDateTime()
-            new_note_field = self.notes_text_edit.toPlainText().strip()
-            transfered_field = self.dropdown_transfered.currentData()
-            is_contractor_field = self.dropdown_is_contractor.currentData()
+                min_date = self.min_dt.toPyDateTime()
+                    
+                leader_field = self.leader_text_edit.toPlainText().strip()
+                order_date_field = self.leader_date_edit.dateTime().toPyDateTime()
+                description_field = TranslateWorkDescription.clean_description(self.description_text_edit.toPlainText())
+                start_date_field = self.work_start_date.dateTime().toPyDateTime()
+                finished_date_field = self.work_finished_date.dateTime().toPyDateTime()
+                new_note_field = self.notes_text_edit.toPlainText().strip()
+                transfered_field = self.dropdown_transfered.currentData()
+                is_contractor_field = self.dropdown_is_contractor.currentData()
 
-            leader = self.compare_str_field(self.previous_admin_work_data.leader, leader_field)
-            
-            description = self.compare_str_field(self.previous_admin_work_data.description, description_field)
+                leader = self.compare_str_field(self.previous_admin_work_data.leader, leader_field)
+                
+                order_date = None
+                if order_date_field != self.previous_admin_work_data.order_date:
+                    
+                    order_date = order_date_field
+                
+                description = self.compare_str_field(self.previous_admin_work_data.description, description_field)
+                
+                if description is not None:
+                    
+                    description = await self.translator.translate(description)
 
-            transfered = True if transfered_field is True else False
-            
-            is_contractor = None if is_contractor_field is None or \
-                is_contractor_field == self.previous_admin_work_data.is_contractor else bool(is_contractor_field)
-            
-            start_date = None
-            if start_date_field != min_date or start_date != self.previous_admin_work_data.start_date:
+                transfered = True if transfered_field is True else False
                 
-                start_date = start_date_field
+                is_contractor = None if is_contractor_field is None or \
+                    is_contractor_field == self.previous_admin_work_data.is_contractor else bool(is_contractor_field)
                 
-            finished_date = None
-            if finished_date_field != min_date:
-                
-                finished_date = finished_date_field
-                
-            new_note = None
-            if new_note_field != "":
-                
-                new_note = new_note_field
+                start_date = None
+                if start_date_field != min_date or start_date_field != self.previous_admin_work_data.start_date:
+                    
+                    start_date = start_date_field
+                    
+                finished_date = None
+                if finished_date_field != min_date:
+                    
+                    finished_date = finished_date_field
+                    
+                new_note = None
+                if new_note_field != "":
+                    
+                    new_note = new_note_field
 
-            attached_images_path = [
-                img for img in self.attached_images if isinstance(img, str)
-            ]
+                attached_images_path = [
+                    img for img in self.attached_images if isinstance(img, str)
+                ]
+                
+                work_accessories = self.filtering_list_with_reference_data(
+                    check_deleted = False,
+                    previous_data = self.previous_admin_work_data,
+                    modified_list = self.work_accessories.items
+                )
             
-            work_accessories = self.filtering_list_with_reference_data(
-                check_deleted = False,
-                previous_data = self.previous_admin_work_data,
-                modified_list = self.work_accessories.items
-            )
-           
-            deleted_work_material = self.filtering_list_with_reference_data(
-                check_deleted = True,
-                previous_data = self.previous_admin_work_data,
-                modified_list = self.work_accessories.items
-            )
-          
-            previous_available_material = await self.material_cache_service.get_material_data_from_cache(
-                material_cache_id = Config.redis.cache.material.id,
-                exp = Config.redis.cache.material.exp
-            )
+                deleted_work_material = self.filtering_list_with_reference_data(
+                    check_deleted = True,
+                    previous_data = self.previous_admin_work_data,
+                    modified_list = self.work_accessories.items
+                )
             
-            available_materials = self.filtering_list_with_reference_data(
-                check_deleted = False,
-                previous_data = previous_available_material.items,
-                modified_list = self.available_materials.items
-            )
-          
-            deleted_available_material = self.filtering_list_with_reference_data(
-                check_deleted = True,
-                previous_data = previous_available_material.items,
-                modified_list = self.available_materials.items
-            )
+                previous_available_material = await self.material_cache_service.get_material_data_from_cache(
+                    material_cache_id = Config.redis.cache.material.id,
+                    exp = Config.redis.cache.material.exp
+                )
+                
+                available_materials = self.filtering_list_with_reference_data(
+                    check_deleted = False,
+                    previous_data = previous_available_material.items,
+                    modified_list = self.available_materials.items
+                )
+            
+                deleted_available_material = self.filtering_list_with_reference_data(
+                    check_deleted = True,
+                    previous_data = previous_available_material.items,
+                    modified_list = self.available_materials.items
+                )
 
-            await self.handle_update_work(
-                leader = leader,
-                description = description,
-                prev_transfered = self.previous_admin_work_data.transfered,
-                transfered = transfered,
-                is_contractor = is_contractor,
-                start_date = start_date,
-                finished_date = finished_date,
-                new_note = new_note,
-                attached_images_path = attached_images_path,
-                work_accessories = work_accessories,
-                deleted_work_material = deleted_work_material,
-                available_materials = available_materials,
-                deleted_available_material = deleted_available_material,
-                changed_notes = self.changed_notes,
-                deleted_img_bytes = self.deleted_img_bytes
-            )
+                await self.handle_update_work(
+                    leader = leader,
+                    order_date = order_date,
+                    description = description,
+                    prev_transfered = self.previous_admin_work_data.transfered,
+                    transfered = transfered,
+                    is_contractor = is_contractor,
+                    start_date = start_date,
+                    finished_date = finished_date,
+                    new_note = new_note,
+                    attached_images_path = attached_images_path,
+                    work_accessories = work_accessories,
+                    deleted_work_material = deleted_work_material,
+                    available_materials = available_materials,
+                    deleted_available_material = deleted_available_material,
+                    changed_notes = self.changed_notes,
+                    deleted_img_bytes = self.deleted_img_bytes
+                )
+            
+            else:
+                
+                self.form_error_label.setText("Nem választottál ki munkát a módosításhoz")
+                self.form_error_label.setVisible(True)
+                
+                scroll_bar = self.scroll_area.verticalScrollBar()
+                scroll_bar.setValue(scroll_bar.maximum())
+                
+        except Exception as e:
+            
+            self.log.exception("Unexpected error occured: %s" % str(e))
+            
+            self.form_error_label.setText("Valami hiba történt")
+            self.form_error_label.setVisible(True)
+            
+            scroll_bar = self.scroll_area.verticalScrollBar()
+            scroll_bar.setValue(scroll_bar.maximum())
+
+        finally: 
+            
+            self.spinner.hide()
 
     def getattr_id(self, obj: object) -> int:
         
@@ -736,6 +937,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
     
     async def handle_update_work(self,
         leader: str | None,
+        order_date: datetime | None,
         description: str | None,
         prev_transfered: bool,
         transfered: bool,
@@ -752,8 +954,9 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         deleted_img_bytes: dict = {}
         ):
  
-        self.log.debug("Before updating work, final parameters are: leader - %s, description: %s, transferred / in progress: %s, is_contractor: %s, start_date: %s, finished_date: %s, new_note: %s, attached_images: %s, work_accessories: %s, deleted_work_material: %s, available_materials: %s, deleted_available_material: %s, changed_notes: %s, deleted_image_ids: %s" % (
+        self.log.debug("Before updating work, final parameters are: leader - %s, order_date: %s, description: %s, transferred / in progress: %s, is_contractor: %s, start_date: %s, finished_date: %s, new_note: %s, attached_images: %s, work_accessories: %s, deleted_work_material: %s, available_materials: %s, deleted_available_material: %s, changed_notes: %s, deleted_image_ids: %s" % (
             str(leader), 
+            str(order_date),
             str(description), 
             str(transfered), 
             str(is_contractor), 
@@ -771,19 +974,20 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         )
         
         confirm_text = f"""
-        <br>You are modifying the following data:<br><br>
-        Project lead: {leader if leader is not None else "No changes"}<br>
-        Work description: {description if description is not None else "No changes"}<br>
-        Delivered: {"Yes" if transfered is True else "No"}<br>
-        Handled by subcontractor: {"Yes" if is_contractor is True else "No" if is_contractor is False else "No changes"}<br>
-        Munka kezdete: {start_date.strftime(Config.time.timeformat) if start_date is not None else "Not assigned yet"}<br>
-        Work completion: {finished_date.strftime(Config.time.timeformat) if finished_date is not None else "Not assigned yet" }<br>
-        New event: {new_note if new_note is not None else "No new note"}<br>
-        New image attached: {len(attached_images_path)} pcs<br>
-        {self.format_material_list_for_txt(work_accessories, "Work accessories")}
-        {self.format_material_list_for_txt(deleted_work_material, "Deleted work materials")}
-        {self.format_material_list_for_txt(available_materials, "Available materials")}
-        {self.format_material_list_for_txt(deleted_available_material, "Deleted materials")}
+        <br>Módosítod a következő adatokat:<br><br>
+        Project vezető: {leader if leader is not None else "Nincs módosítás"}<br>
+        Megrendelés dátuma: {order_date.strftime(Config.time.timeformat) if order_date is not None else "Nincs módosítás"}<br>
+        Munka leírása: {description if description is not None else "Nincs módosítás"}<br>
+        Elszállítva: {"Igen" if transfered is True else "Nem"}<br>
+        Alvállalkozó csinálja: {"Igen" if is_contractor is True else "Nem" if is_contractor is False else "Nincs módosítás"}<br>
+        Munka kezdete: {start_date.strftime(Config.time.timeformat) if start_date is not None else "Nem lett még hozzárendelve"}<br>
+        Munka befejezése: {finished_date.strftime(Config.time.timeformat) if finished_date is not None else "Nem lett még hozzárendelve" }<br>
+        Új esemény: {new_note if new_note is not None else "Nincs új jegyzet"}<br>
+        Új kép csatolva: {len(attached_images_path)} darab<br>
+        {self.format_material_list_for_txt(work_accessories, "Munka kiegészítők")}
+        {self.format_material_list_for_txt(deleted_work_material, "Törölt munka anyagok")}
+        {self.format_material_list_for_txt(available_materials, "Elérhető anyagok")}
+        {self.format_material_list_for_txt(deleted_available_material, "Törölt anyagok")}
         <br>Biztosan folytatod?<br>
         """
         
@@ -804,6 +1008,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
                     await queries.update_work_by_id(
                         work_id = self.current_work_id,
                         leader = leader,
+                        order_date = order_date,
                         description = description,
                         prev_transfered = prev_transfered,
                         transfered = transfered,
@@ -824,9 +1029,18 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
 
                     await self.reset_form(False)
                     
+                    self.form_success_label.setText("Sikeresen módosítottad a munkát")
+                    self.form_success_label.setVisible(True)
+                    
             except Exception as e:
                 
                 self.log.exception("An unexpected error occurred during the update %s" % str(e))
+                
+                self.form_error_label.setText("Valami hiba történt a módosítás során")
+                self.form_error_label.setVisible(True)
+                
+                scroll_bar = self.scroll_area.verticalScrollBar()
+                scroll_bar.setValue(scroll_bar.maximum())
             
     def format_material_list_for_txt(self, materials: t.List[MaterialData], title: str) -> str:
         
@@ -839,7 +1053,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
             
             return f"{title}: {formatted_items}<br>"
 
-        return f"{title}: No changes<br>"
+        return f"{title}: Nincs változás<br>"
     
     def _handle_attach_file_btn(self):
     
@@ -851,8 +1065,8 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         file_paths, _ = QFileDialog.getOpenFileNames(
             self, 
-            "Select files"
-            "Select images",
+            "Fájlok kiválasztása"
+            "Képek kiválasztása",
             "",
             "Images (*.png *.jpg *.jpeg *.bmp *.webp)"
         )
@@ -889,11 +1103,17 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
             
             byte = self.image_map.get(file_path_to_delete, None)
             
-            text = f"Bytes({len(byte)})"
+            if byte is not None:
+                
+                text = f"Bytes({len(byte)})"
     
-            self.deleted_img_bytes[file_path_to_delete] = byte
-            
-            self.image_map.pop(file_path_to_delete)
+                self.deleted_img_bytes[file_path_to_delete] = byte
+                
+                self.image_map.pop(file_path_to_delete, None)
+                
+            else:
+                
+                text = f"ImageId({file_path_to_delete})"
         
         self.log.debug("Request to delete image: %s" % text)
             
@@ -988,194 +1208,204 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         self.work_components_list_top.clear()
 
-        if len(data_list) > 0:
-            
-            self.log.debug("Populating work components available in storage list with %d items of (%s) data" % (
-                len(data_list),
-                data_list[0].__class__.__name__
-                )
-            )
+        self.work_components_list_top.setUpdatesEnabled(False)
         
-            self.work_components_list_top.setUniformItemSizes(False)
+        try:
+
+            self._top_full_data = data_list
             
-            font = QFont()
-            font.setPointSize(10)
-            font.setBold(True)
-
-            if isinstance(data_list[0], MaterialData):
-                
-                for data in data_list:
+            visible_data = [d for d in data_list if isinstance(d, MaterialData) and not d.is_deleted]
             
-                    if data.is_deleted == True:
-                        continue
-                    
-                    name = data.name if data.name is not None else "N/A"
-                    
-                    manufacture_number = data.manufacture_number if data.manufacture_number is not None else "N/A"
-                    
-                    quantity = f"{data.quantity:.4f}" if data.quantity is not None else "N/A"
-                    
-                    unit = data.unit if data.unit is not None else "N/A"
-                    
-                    manufacture_date = data.manufacture_date.strftime(Config.time.timeformat) if data.manufacture_date is not None else "N/A"
-                    
-                    price = f"{data.price:,.2f}".replace(",", ".") + " HUF" if data.price is not None else "N/A"
-                    
-                    purchase_source = data.purchase_source if data.purchase_source is not None else "N/A"
-                    
-                    purchase_date = data.purchase_date.strftime(Config.time.timeformat) if data.purchase_date is not None else "N/A"
-                    
-                    inspection_date = data.inspection_date.strftime(Config.time.timeformat) if data.inspection_date is not None else "N/A"
-                    
-                    list_item = QListWidgetItem()
-                    
-                    container = QWidget()
-                    container.setFixedHeight(35)
-                    
-                    edit_btn = QPushButton()
-                    edit_btn.setObjectName("TrashButton")
-                    edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                    edit_btn.setIcon(AdminEditWorkContent.icon("add.svg"))
-                    edit_btn.setIconSize(QSize(20, 20))
-                    edit_btn.setToolTip("Add")
-                
-                    id_label = QLabel(str(data.id).strip())
-                    id_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    id_label.setFont(font)
-                    id_label.setToolTip(str(data.id).strip())
+            total_pages = max(1, (len(visible_data) + self._items_per_page - 1) // self._items_per_page)
+            
+            self._top_page = max(0, min(self._top_page, total_pages - 1))
+            
+            start_idx = self._top_page * self._items_per_page
+            
+            page_data = visible_data[start_idx:start_idx + self._items_per_page]
+            
+            self.top_page_label.setText(f"{self._top_page + 1} / {total_pages}")
 
-                    storage_id_label = QLabel(str(data.storage_id).strip())
-                    storage_id_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    storage_id_label.setFont(font)
-                    storage_id_label.setToolTip(str(data.storage_id).strip())
-
-                    name_label = QLabel(name.strip())
-                    name_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-                    name_label.setFont(font)
-                    name_label.setToolTip(name.strip())
-
-                    manufacture_number_label = QLabel(manufacture_number.strip())
-                    manufacture_number_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-                    manufacture_number_label.setFont(font)
-                    manufacture_number_label.setToolTip(manufacture_number.strip())
-
-                    self.in_storage_label = QLabel("In storage: " + quantity.strip())
-                    self.in_storage_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    self.in_storage_label.setFont(font)
-                    self.in_storage_label.setToolTip(quantity.strip())
-                    
-                    add_to_quantity_sb = QDoubleSpinBox()
-                    add_to_quantity_sb.setDecimals(4)
-                    add_to_quantity_sb.setSingleStep(0.01)
-                    add_to_quantity_sb.setMinimum(0)
-                    add_to_quantity_sb.setMaximum(data.quantity)
-                    add_to_quantity_sb.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                    add_to_quantity_sb.setObjectName("input_quantity")
-                    
-                    edit_btn.clicked.connect(lambda _, material = data, spin_box = add_to_quantity_sb, is_on_work_btn = False: 
-                        self._handle_current_material(material, spin_box, is_on_work_btn)
+            if len(page_data) > 0:
+            
+                self.log.debug("Populating work components available in storage list with %d items of (%s) data (page %d/%d)" % (
+                    len(visible_data),
+                    data_list[0].__class__.__name__,
+                    self._top_page + 1,
+                    total_pages
                     )
-                    
-                    unit_label = QLabel(unit.strip())
-                    unit_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    unit_label.setFont(font)
-                    unit_label.setToolTip(unit.strip())
-
-                    manufacture_date_label = QLabel(manufacture_date.strip())
-                    manufacture_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    manufacture_date_label.setFont(font)
-                    manufacture_date_label.setToolTip(manufacture_date.strip())
-
-                    price_label = QLabel(price.strip())
-                    price_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    price_label.setFont(font)
-                    price_label.setToolTip(price.strip())
-
-                    purchase_source_label = QLabel(purchase_source.strip())
-                    purchase_source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    purchase_source_label.setFont(font)
-                    purchase_source_label.setToolTip(purchase_source.strip())
-
-                    purchase_date_label = QLabel(purchase_date.strip())
-                    purchase_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    purchase_date_label.setFont(font)
-                    purchase_date_label.setToolTip(purchase_date.strip())
-
-                    inspection_date_label = QLabel(inspection_date.strip())
-                    inspection_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    inspection_date_label.setFont(font)
-                    inspection_date_label.setToolTip(inspection_date.strip())
-                    
-                    quantity_range = self.utility_calculator.check_quantity(data.quantity)
-                    
-                    if quantity_range == QuantityRange.ZERO_TO_THREE:
-                        
-                        container.setStyleSheet(Config.styleSheets.failed)
-                        
-                    elif quantity_range == QuantityRange.THREE_TO_FIVE:
-                        
-                        container.setStyleSheet(Config.styleSheets.warning)
-                        
-                    else: 
-                        
-                        container.setStyleSheet(Config.styleSheets.success)
-                        
-                    h_layout = QHBoxLayout(container)
-                    h_layout.setContentsMargins(0, 0, 0, 0)
-                    
-                    widgets = [
-                        edit_btn,
-                        id_label,
-                        storage_id_label,
-                        name_label,
-                        manufacture_number_label,
-                        self.in_storage_label,
-                        add_to_quantity_sb,
-                        unit_label,
-                        manufacture_date_label,
-                        price_label,
-                        purchase_source_label,
-                        purchase_date_label,
-                        inspection_date_label
-                    ]
-                    
-                    if self.all_collumns is None:
-                        
-                        self.all_collumns = len(widgets)
-
-                    if self._recalculate_widths is True:
+                )
+        
+                self.work_components_list_top.setUniformItemSizes(False)
                 
-                        current_row_max_col_width = max([QFontMetrics(w.font()).horizontalAdvance(w.text()) 
-                            for w in widgets if isinstance(w, QLabel)])
-                        
-                        self.row_maximum_col_widths.append(current_row_max_col_width + 10)
-                    
-                    for w in widgets:
-                        
-                        if isinstance(w, QLabel):
+                font = QFont()
+                font.setPointSize(10)
+                font.setBold(True)
 
-                            w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-                            w.setContentsMargins(0, 0, 0, 0)
-                            w.setWordWrap(False)
+                if isinstance(page_data[0], MaterialData):
                     
-                        h_layout.addWidget(w)
-                
-                    list_item.setSizeHint(container.sizeHint())
-                    
-                    self.work_components_list_top.addItem(list_item)
-                    self.work_components_list_top.setItemWidget(list_item, container)
-                    self.work_components_list_top.setSpacing(5)
-                    
-                    list_item.setData(Qt.ItemDataRole.UserRole, data_list)
-                
-                self.calculate_globa_col_width_and_apply_to_relevant_list(self.work_components_list_top)
-                
-                # print("Available list:", data_list)  
-                QTimer.singleShot(0, lambda: scroll_bar.setValue(scroll_pos))
+                    for data in page_data:
+                        
+                        name = data.name if data.name is not None else "N/A"
+                        
+                        manufacture_number = data.manufacture_number if data.manufacture_number is not None else "N/A"
+                        
+                        quantity = f"{data.quantity:.4f}" if data.quantity is not None else "N/A"
+                        
+                        unit = data.unit if data.unit is not None else "N/A"
+                        
+                        manufacture_date = data.manufacture_date.strftime(Config.time.timeformat) if data.manufacture_date is not None else "N/A"
+                        
+                        price = f"{data.price:,.2f}".replace(",", ".") + " HUF" if data.price is not None else "N/A"
+                        
+                        purchase_source = data.purchase_source if data.purchase_source is not None else "N/A"
+                        
+                        purchase_date = data.purchase_date.strftime(Config.time.timeformat) if data.purchase_date is not None else "N/A"
+                        
+                        inspection_date = data.inspection_date.strftime(Config.time.timeformat) if data.inspection_date is not None else "N/A"
+                        
+                        list_item = QListWidgetItem()
+                        
+                        container = QWidget()
+                        container.setFixedHeight(35)
+                        
+                        edit_btn = QPushButton()
+                        edit_btn.setObjectName("TrashButton")
+                        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                        edit_btn.setIcon(AdminEditWorkContent.icon("add.svg"))
+                        edit_btn.setIconSize(QSize(20, 20))
+                        edit_btn.setToolTip("Hozzáadás")
 
-        else: 
+                        name_label = QLabel(name.strip())
+                        name_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+                        name_label.setFont(font)
+                        name_label.setToolTip(name.strip())
+
+                        manufacture_number_label = QLabel(manufacture_number.strip())
+                        manufacture_number_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+                        manufacture_number_label.setFont(font)
+                        manufacture_number_label.setToolTip(manufacture_number.strip())
+
+                        self.in_storage_label = QLabel("Raktárban: " + quantity.strip())
+                        self.in_storage_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        self.in_storage_label.setFont(font)
+                        self.in_storage_label.setToolTip(quantity.strip())
+                        
+                        add_to_quantity_sb = QDoubleSpinBox()
+                        add_to_quantity_sb.setDecimals(4)
+                        add_to_quantity_sb.setSingleStep(0.01)
+                        add_to_quantity_sb.setMinimum(0)
+                        add_to_quantity_sb.setMaximum(data.quantity)
+                        add_to_quantity_sb.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                        add_to_quantity_sb.setObjectName("input_quantity")
+                        add_to_quantity_sb.installEventFilter(self)
+                        
+                        edit_btn.clicked.connect(lambda _, material = data, spin_box = add_to_quantity_sb, is_on_work_btn = False: 
+                            self._handle_current_material(material, spin_box, is_on_work_btn)
+                        )
+                        
+                        unit_label = QLabel(unit.strip())
+                        unit_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        unit_label.setFont(font)
+                        unit_label.setToolTip(unit.strip())
+
+                        manufacture_date_label = QLabel(manufacture_date.strip())
+                        manufacture_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        manufacture_date_label.setFont(font)
+                        manufacture_date_label.setToolTip(manufacture_date.strip())
+
+                        price_label = QLabel(price.strip())
+                        price_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        price_label.setFont(font)
+                        price_label.setToolTip(price.strip())
+
+                        purchase_source_label = QLabel(purchase_source.strip())
+                        purchase_source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        purchase_source_label.setFont(font)
+                        purchase_source_label.setToolTip(purchase_source.strip())
+
+                        purchase_date_label = QLabel(purchase_date.strip())
+                        purchase_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        purchase_date_label.setFont(font)
+                        purchase_date_label.setToolTip(purchase_date.strip())
+
+                        inspection_date_label = QLabel(inspection_date.strip())
+                        inspection_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        inspection_date_label.setFont(font)
+                        inspection_date_label.setToolTip(inspection_date.strip())
+                        
+                        quantity_range = self.utility_calculator.check_quantity(data.quantity)
+                        
+                        if quantity_range == QuantityRange.ZERO_TO_THREE:
+                            
+                            container.setStyleSheet(Config.styleSheets.failed)
+                            
+                        elif quantity_range == QuantityRange.THREE_TO_FIVE:
+                            
+                            container.setStyleSheet(Config.styleSheets.warning)
+                            
+                        else: 
+                            
+                            container.setStyleSheet(Config.styleSheets.success)
+                            
+                        h_layout = QHBoxLayout(container)
+                        h_layout.setContentsMargins(0, 0, 0, 0)
+                        
+                        widgets = [
+                            edit_btn,
+                            self.in_storage_label,
+                            add_to_quantity_sb,
+                            unit_label,
+                            name_label,
+                            manufacture_number_label,
+                            manufacture_date_label,
+                            price_label,
+                            purchase_source_label,
+                            purchase_date_label,
+                            inspection_date_label
+                        ]
+                        
+                        if self.all_collumns is None:
+                            
+                            self.all_collumns = len(widgets)
+
+                        if self._recalculate_widths is True:
+                    
+                            current_row_max_col_width = max([QFontMetrics(w.font()).horizontalAdvance(w.text()) 
+                                for w in widgets if isinstance(w, QLabel)])
+                            
+                            self.row_maximum_col_widths.append(current_row_max_col_width + 10)
+                        
+                        for w in widgets:
+                            
+                            if isinstance(w, QLabel):
+
+                                w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+                                w.setContentsMargins(0, 0, 0, 0)
+                                w.setWordWrap(False)
+                        
+                            h_layout.addWidget(w)
+                    
+                        list_item.setSizeHint(QSize(container.sizeHint().width(), 35))
+                        
+                        self.work_components_list_top.addItem(list_item)
+                        self.work_components_list_top.setItemWidget(list_item, container)
+                        self.work_components_list_top.setSpacing(2)
+                        
+                        list_item.setData(Qt.ItemDataRole.UserRole, data_list)
+                    
+                    self.calculate_global_col_width_and_apply_to_relevant_list(self.work_components_list_top)
+                    
+                    # print("Available list:", data_list)  
+                    QTimer.singleShot(0, lambda: scroll_bar.setValue(scroll_pos))
+
+            else: 
+                
+                self.log.info("Populating work components available in storage list with 0 items")
+        
+        finally:
             
-            self.log.info("Populating work components available in storage list with 0 items")
+            self.work_components_list_top.setUpdatesEnabled(True)
             
     # Work accessories
     def populate_work_components_list_on_work(self, data_list: t.List[MaterialData]):
@@ -1189,181 +1419,201 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         self.work_components_list_bottom.clear()
 
-        if len(data_list) > 0:
-            
-            self.log.debug("Populating work components available on work list with %d items of (%s) data" % (
-                len(data_list),
-                data_list[0].__class__.__name__
-                )
-            )
+        self.work_components_list_bottom.setUpdatesEnabled(False)
         
-            self.work_components_list_bottom.setUniformItemSizes(False)
+        try:
+
+            self._bottom_full_data = data_list
+           
+            visible_data = [d for d in data_list if isinstance(d, MaterialData) and not d.is_deleted]
             
-            font = QFont()
-            font.setPointSize(10)
-            font.setBold(True)
+            total_pages = max(1, (len(visible_data) + self._items_per_page - 1) // self._items_per_page)
             
-            if isinstance(data_list[0], MaterialData):
-                
-                for data in data_list:
-                    
-                    if data.is_deleted == True:
-                        continue
-                    
-                    name = data.name if data.name is not None else "N/A"
-                    
-                    manufacture_number = data.manufacture_number if data.manufacture_number is not None else "N/A"
-                    
-                    quantity = f"{data.quantity:.4f}" if data.quantity is not None else "N/A"
-                    
-                    unit = data.unit if data.unit is not None else "N/A"
-                    
-                    manufacture_date = data.manufacture_date.strftime(Config.time.timeformat) if data.manufacture_date is not None else "N/A"
-                    
-                    price = f"{data.price:,.2f}".replace(",", ".") + " HUF" if data.price is not None else "N/A"
-                    
-                    purchase_source = data.purchase_source if data.purchase_source is not None else "N/A"
-                    
-                    purchase_date = data.purchase_date.strftime(Config.time.timeformat) if data.purchase_date is not None else "N/A"
-                    
-                    inspection_date = data.inspection_date.strftime(Config.time.timeformat) if data.inspection_date is not None else "N/A"
-                    
-                    list_item = QListWidgetItem()
-                    
-                    container = QWidget()
-                    container.setFixedHeight(35)
-                    
-                    edit_btn = QPushButton()
-                    edit_btn.setObjectName("TrashButton")
-                    edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                    edit_btn.setIcon(AdminEditWorkContent.icon("trash.svg"))
-                    edit_btn.setIconSize(QSize(20, 20))
-                    edit_btn.setToolTip("Add")
-                
-                    id_label = QLabel(str(data.id).strip())
-                    id_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    id_label.setFont(font)
-                    id_label.setToolTip(str(data.id).strip())
+            self._bottom_page = max(0, min(self._bottom_page, total_pages - 1))
+            
+            start_idx = self._bottom_page * self._items_per_page
+            
+            page_data = visible_data[start_idx:start_idx + self._items_per_page]
+            
+            self.bottom_page_label.setText(f"{self._bottom_page + 1} / {total_pages}")
 
-                    storage_id_label = QLabel(str(data.storage_id).strip())
-                    storage_id_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                    storage_id_label.setFont(font)
-                    storage_id_label.setToolTip(str(data.storage_id).strip())
-
-                    name_label = QLabel(name.strip())
-                    name_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-                    name_label.setFont(font)
-                    name_label.setToolTip(name.strip())
-
-                    manufacture_number_label = QLabel(manufacture_number.strip())
-                    manufacture_number_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-                    manufacture_number_label.setFont(font)
-                    manufacture_number_label.setToolTip(manufacture_number.strip())
-
-                    self.in_storage_label = QLabel("Added to work: " + quantity.strip())
-                    self.in_storage_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    self.in_storage_label.setFont(font)
-                    self.in_storage_label.setToolTip(quantity.strip())
-                    
-                    remove_work_quantity_sb = QDoubleSpinBox()
-                    remove_work_quantity_sb.setDecimals(4)
-                    remove_work_quantity_sb.setSingleStep(0.01)
-                    remove_work_quantity_sb.setMinimum(0)
-                    remove_work_quantity_sb.setMaximum(data.quantity)
-                    remove_work_quantity_sb.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                    remove_work_quantity_sb.setObjectName("input_quantity")
-                    
-                    edit_btn.clicked.connect(lambda _, material = data, spin_box = remove_work_quantity_sb, is_on_work_btn = True: 
-                        self._handle_current_material(material, spin_box, is_on_work_btn)
+            if len(page_data) > 0:
+            
+                self.log.debug("Populating work components available on work list with %d items of (%s) data (page %d/%d)" % (
+                    len(visible_data),
+                    data_list[0].__class__.__name__,
+                    self._bottom_page + 1,
+                    total_pages
                     )
-
-                    unit_label = QLabel(unit.strip())
-                    unit_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    unit_label.setFont(font)
-                    unit_label.setToolTip(unit.strip())
-
-                    manufacture_date_label = QLabel(manufacture_date.strip())
-                    manufacture_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    manufacture_date_label.setFont(font)
-                    manufacture_date_label.setToolTip(manufacture_date.strip())
-
-                    price_label = QLabel(price.strip())
-                    price_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    price_label.setFont(font)
-                    price_label.setToolTip(price.strip())
-
-                    purchase_source_label = QLabel(purchase_source.strip())
-                    purchase_source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    purchase_source_label.setFont(font)
-                    purchase_source_label.setToolTip(purchase_source.strip())
-
-                    purchase_date_label = QLabel(purchase_date.strip())
-                    purchase_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    purchase_date_label.setFont(font)
-                    purchase_date_label.setToolTip(purchase_date.strip())
-
-                    inspection_date_label = QLabel(inspection_date.strip())
-                    inspection_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    inspection_date_label.setFont(font)
-                    inspection_date_label.setToolTip(inspection_date.strip())
-
-                    h_layout = QHBoxLayout(container)
-                    h_layout.setContentsMargins(0, 0, 0, 0)
+                )
+        
+                self.work_components_list_bottom.setUniformItemSizes(False)
+                
+                font = QFont()
+                font.setPointSize(10)
+                font.setBold(True)
+                
+                if isinstance(page_data[0], MaterialData):
                     
-                    widgets = [
-                        edit_btn,
-                        id_label,
-                        storage_id_label,
-                        name_label,
-                        manufacture_number_label,
-                        self.in_storage_label,
-                        remove_work_quantity_sb,
-                        unit_label,
-                        manufacture_date_label,
-                        price_label,
-                        purchase_source_label,
-                        purchase_date_label,
-                        inspection_date_label
-                    ]
-                    
-                    if self.all_collumns is None:
+                    for data in page_data:
                         
-                        self.all_collumns = len(widgets)
-
-                    if self._recalculate_widths is True:
-                
-                        current_row_max_col_width = max([QFontMetrics(w.font()).horizontalAdvance(w.text()) 
-                            for w in widgets if isinstance(w, QLabel)])
+                        name = data.name if data.name is not None else "N/A"
                         
-                        self.row_maximum_col_widths.append(current_row_max_col_width + 10)
-                    
-                    for w in widgets:
+                        manufacture_number = data.manufacture_number if data.manufacture_number is not None else "N/A"
                         
-                        if isinstance(w, QLabel):
+                        quantity = f"{data.quantity:.4f}" if data.quantity is not None else "N/A"
+                        
+                        unit = data.unit if data.unit is not None else "N/A"
+                        
+                        manufacture_date = data.manufacture_date.strftime(Config.time.timeformat) if data.manufacture_date is not None else "N/A"
+                        
+                        price = f"{data.price:,.2f}".replace(",", ".") + " HUF" if data.price is not None else "N/A"
+                        
+                        purchase_source = data.purchase_source if data.purchase_source is not None else "N/A"
+                        
+                        purchase_date = data.purchase_date.strftime(Config.time.timeformat) if data.purchase_date is not None else "N/A"
+                        
+                        inspection_date = data.inspection_date.strftime(Config.time.timeformat) if data.inspection_date is not None else "N/A"
+                        
+                        list_item = QListWidgetItem()
+                        
+                        container = QWidget()
+                        container.setFixedHeight(35)
+                        
+                        edit_btn = QPushButton()
+                        edit_btn.setObjectName("TrashButton")
+                        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                        edit_btn.setIcon(AdminEditWorkContent.icon("trash.svg"))
+                        edit_btn.setIconSize(QSize(20, 20))
+                        edit_btn.setToolTip("Hozzáadás")
 
-                            w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-                            w.setContentsMargins(0, 0, 0, 0)
-                            w.setWordWrap(False)
+                        name_label = QLabel(name.strip())
+                        name_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+                        name_label.setFont(font)
+                        name_label.setToolTip(name.strip())
+
+                        manufacture_number_label = QLabel(manufacture_number.strip())
+                        manufacture_number_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+                        manufacture_number_label.setFont(font)
+                        manufacture_number_label.setToolTip(manufacture_number.strip())
+
+                        self.in_storage_label = QLabel("Munkához adva: " + quantity.strip())
+                        self.in_storage_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        self.in_storage_label.setFont(font)
+                        self.in_storage_label.setToolTip(quantity.strip())
+                        
+                        remove_work_quantity_sb = QDoubleSpinBox()
+                        remove_work_quantity_sb.setDecimals(4)
+                        remove_work_quantity_sb.setSingleStep(0.01)
+                        remove_work_quantity_sb.setMinimum(0)
+                        remove_work_quantity_sb.setMaximum(data.quantity)
+                        remove_work_quantity_sb.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                        remove_work_quantity_sb.setObjectName("input_quantity")
+                        remove_work_quantity_sb.installEventFilter(self)
+                        
+                        edit_btn.clicked.connect(lambda _, material = data, spin_box = remove_work_quantity_sb, is_on_work_btn = True: 
+                            self._handle_current_material(material, spin_box, is_on_work_btn)
+                        )
+
+                        unit_label = QLabel(unit.strip())
+                        unit_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        unit_label.setFont(font)
+                        unit_label.setToolTip(unit.strip())
+
+                        manufacture_date_label = QLabel(manufacture_date.strip())
+                        manufacture_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        manufacture_date_label.setFont(font)
+                        manufacture_date_label.setToolTip(manufacture_date.strip())
+
+                        price_label = QLabel(price.strip())
+                        price_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        price_label.setFont(font)
+                        price_label.setToolTip(price.strip())
+
+                        purchase_source_label = QLabel(purchase_source.strip())
+                        purchase_source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        purchase_source_label.setFont(font)
+                        purchase_source_label.setToolTip(purchase_source.strip())
+
+                        purchase_date_label = QLabel(purchase_date.strip())
+                        purchase_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        purchase_date_label.setFont(font)
+                        purchase_date_label.setToolTip(purchase_date.strip())
+
+                        inspection_date_label = QLabel(inspection_date.strip())
+                        inspection_date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                        inspection_date_label.setFont(font)
+                        inspection_date_label.setToolTip(inspection_date.strip())
+
+                        h_layout = QHBoxLayout(container)
+                        h_layout.setContentsMargins(0, 0, 0, 0)
+                        
+                        widgets = [
+                            edit_btn,
+                            self.in_storage_label,
+                            remove_work_quantity_sb,
+                            unit_label,
+                            name_label,
+                            manufacture_number_label,
+                            manufacture_date_label,
+                            price_label,
+                            purchase_source_label,
+                            purchase_date_label,
+                            inspection_date_label
+                        ]
+                        
+                        if self.all_collumns is None:
+                            
+                            self.all_collumns = len(widgets)
+
+                        if self._recalculate_widths is True:
                     
-                        h_layout.addWidget(w)
-                
-                    list_item.setSizeHint(container.sizeHint())
+                            current_row_max_col_width = max([QFontMetrics(w.font()).horizontalAdvance(w.text()) 
+                                for w in widgets if isinstance(w, QLabel)])
+                            
+                            self.row_maximum_col_widths.append(current_row_max_col_width + 10)
+                        
+                        for w in widgets:
+                            
+                            if isinstance(w, QLabel):
+
+                                w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+                                w.setContentsMargins(0, 0, 0, 0)
+                                w.setWordWrap(False)
+                        
+                            h_layout.addWidget(w)
                     
-                    self.work_components_list_bottom.addItem(list_item)
-                    self.work_components_list_bottom.setItemWidget(list_item, container)
-                    self.work_components_list_bottom.setSpacing(5)
+                        list_item.setSizeHint(QSize(container.sizeHint().width(), 35))
+                        
+                        self.work_components_list_bottom.addItem(list_item)
+                        self.work_components_list_bottom.setItemWidget(list_item, container)
+                        self.work_components_list_bottom.setSpacing(2)
+                        
+                        list_item.setData(Qt.ItemDataRole.UserRole, data_list)
                     
-                    list_item.setData(Qt.ItemDataRole.UserRole, data_list)
-                
-                self.calculate_globa_col_width_and_apply_to_relevant_list(self.work_components_list_bottom)
-                
-                # print("Available list:", data_list)  
-                QTimer.singleShot(0, lambda: scroll_bar.setValue(scroll_pos))
+                    self.calculate_global_col_width_and_apply_to_relevant_list(self.work_components_list_bottom)
+                    
+                    # print("Available list:", data_list)  
+                    QTimer.singleShot(0, lambda: scroll_bar.setValue(scroll_pos))
                 
             else:
                 
                 self.log.info("Populating work components available on work list with 0 items")
+        
+        finally:
+            
+            self.work_components_list_bottom.setUpdatesEnabled(True)
                 
+    def _change_top_page(self, delta: int):
+       
+        self._top_page += delta
+        self.populate_work_components_list(self._top_full_data)
+    
+    def _change_bottom_page(self, delta: int):
+        
+        self._bottom_page += delta
+        self.populate_work_components_list_on_work(self._bottom_full_data)
+    
     def _handle_current_material(self, material: MaterialData, spin_box: QDoubleSpinBox, is_on_work_btn: bool):
         """
         Adds or removes a quantity of a material between the warehouse and work lists.
@@ -1594,7 +1844,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         self.populate_work_components_list(self.available_materials.items)
         self.populate_work_components_list_on_work(self.work_accessories.items)
                                 
-    def calculate_globa_col_width_and_apply_to_relevant_list(self, list_widget: QListWidget):
+    def calculate_global_col_width_and_apply_to_relevant_list(self, list_widget: QListWidget):
     
         if len(self.row_maximum_col_widths) > 0:
           
@@ -1614,7 +1864,7 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
                             
                             container = list_widget.itemWidget(item)
 
-                            container.setFixedWidth(row_width)
+                            container.setMaximumWidth(row_width)
                             
                             item.setSizeHint(QSize(row_width, item.sizeHint().height()))
                             
@@ -1635,19 +1885,26 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
                                         if isinstance(widget, QDoubleSpinBox):
                                             
                                             widget.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                                            widget.setFixedWidth(50)
-                                    
-                                        if j >= 3 and j <= 4:
+                                            widget.setFixedWidth(80)
+                                            
+                                        elif j == 0:
+                                        
+                                            widget.setFixedWidth(40)
+                                            
+                                        elif j <= 3:
+                                        
+                                            widget.setFixedWidth(200)
+                                            
+                                            if isinstance(widget, QLabel):
+                                                widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                                            
+                                        elif j >= 4 and j <= 5:
                                         
                                             widget.setFixedWidth(int(self.global_max_col_width * x))
                                             
-                                        elif j > 4:
-                                            
-                                            widget.setFixedWidth(self.global_max_col_width)
-                                            
-                                        else: 
+                                        else:
                                         
-                                            widget.setFixedWidth(40)  
+                                            widget.setFixedWidth(self.global_max_col_width)
   
             self._recalculate_widths = False 
 
@@ -1657,12 +1914,17 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         self.available_materials.items.clear()
         
+        self._top_page = 0
+        self._bottom_page = 0
+        
         await self.material_cache_service.clear_cache(Config.redis.cache.material.id) 
 
         await self.work_content.load_cache_data()
             
     def _handle_enter_pressed(self):
                 
+        self._top_page = 0
+        
         text_lower = self.components_search_input.text().strip().lower()
         
         if text_lower == "":
@@ -1698,4 +1960,3 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         
         self.work_content.on_data_loaded(MaterialCacheData(items = filtered_items))
     
-

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="hu">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+        :root {
+            --font-family: 'Inter', sans-serif;
+            --primary-color: #1f2e61;
+            --secondary-color: #f4f4f4;
+            --text-color: #3e3e3e;
+            --border-color: #dddddd;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+
+        @page {
+            size: A4;
+            margin: 12mm 12mm 15mm 12mm;
+
+            {% if show_page_numbers %}
+            @bottom-center {
+                content: counter(page) " / " counter(pages);
+                font-size: 8pt;
+                color: #999999;
+                font-family: 'Inter', sans-serif;
+            }
+            {% endif %}
+        }
+
+        html,
+        body {
+            position: relative;
+            width: auto;
+            height: auto;
+            margin: 0;
+            padding: 0;
+            background: white;
+            overflow: visible;
+            font-family: var(--font-family);
+            font-size: 10pt;
+            line-height: 1.4;
+            color: var(--text-color);
+        }
+
+        .content {
+            width: 100%;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        .report-header {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 80px;
+            page-break-after: avoid;
+        }
+
+        .report-header .cts-logo {
+            margin-bottom: 10px;
+        }
+
+        .report-header h1 {
+            font-size: 24pt;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin: 5px 0;
+            text-align: center;
+        }
+
+        .report-header h2 {
+            font-size: 16pt;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin: 2px 0 10px 0;
+            text-align: center;
+        }
+
+        .devider {
+            height: 2px;
+            background-color: var(--primary-color);
+            margin: 15px 0;
+        }
+
+        .schedule-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 15px 0;
+            padding: 10px 15px;
+            background-color: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+
+        .schedule-row .schedule-item {
+            text-align: center;
+            flex: 1;
+        }
+
+        .schedule-row .schedule-item .label {
+            font-size: 8pt;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .schedule-row .schedule-item .value {
+            font-size: 10pt;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .work-details {
+            margin: 20px 0;
+        }
+
+        .work-details .detail-row {
+            margin-bottom: 12px;
+        }
+
+        .work-details .detail-row .detail-label {
+            font-size: 9pt;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .work-details .detail-row .detail-value {
+            font-size: 11pt;
+            color: var(--text-color);
+        }
+
+        .work-details .detail-row .detail-value.leader {
+            font-size: 13pt;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .work-info-grid {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin: 15px 0;
+            page-break-inside: avoid;
+        }
+
+        .work-info-grid .info-box {
+            flex: 1;
+            padding: 10px 15px;
+            background-color: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .work-info-grid .info-box .label {
+            font-size: 8pt;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .work-info-grid .info-box .value {
+            font-size: 10pt;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .description-section {
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .description-section strong {
+            font-size: 11pt;
+            color: var(--primary-color);
+        }
+
+        .description-section p {
+            margin-top: 5px;
+            font-size: 10pt;
+        }
+
+        .notes-section {
+            margin-top: 25px;
+        }
+
+        .notes-section h3 {
+            font-size: 12pt;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            page-break-inside: auto;
+        }
+
+        thead {
+            display: table-header-group;
+        }
+
+        tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+        }
+
+        table th,
+        table td {
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        table th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        table th:nth-child(1) {
+            width: 8%;
+        }
+
+        table th:nth-child(2) {
+            width: 67%;
+        }
+
+        table th:nth-child(3) {
+            width: 25%;
+        }
+
+        table td:nth-child(1) {
+            text-align: center;
+        }
+
+        table td:nth-child(2) {
+            text-align: left;
+        }
+
+        table td:nth-child(3) {
+            text-align: center;
+        }
+
+        .no-notes {
+            text-align: center;
+            font-style: italic;
+            color: #999;
+            padding: 15px 0;
+        }
+
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 8pt;
+            color: #999;
+            page-break-inside: avoid;
+        }
+
+        .footer p {
+            margin: 1px 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="content">
+
+        <!-- Header -->
+        <div class="report-header">
+            <div class="cts-logo">
+                <img src="data:image/svg+xml;base64,{{ cts_logo }}" alt="CTS Logo" style="width:200px; height:auto;">
+            </div>
+            <h1>{{ boat_name }}</h1>
+            <h2>Megrendelés dátuma - {{ work.order_date.strftime("%Y-%m-%d") if work.order_date is not none else "–" }}</h2>
+        </div>
+
+        <div class="devider"></div>
+
+        <!-- Schedule row -->
+        <div class="schedule-row">
+            <div class="schedule-item">
+                <div class="label">Hely</div>
+                <div class="value">{{ schedule.location }}</div>
+            </div>
+            <div class="schedule-item">
+                <div class="label">Hajó</div>
+                <div class="value">{{ boat_name }}</div>
+            </div>
+            <div class="schedule-item">
+                <div class="label">Érkezés</div>
+                <div class="value">{{ schedule.arrival_date.strftime(timeformat) }}</div>
+            </div>
+            <div class="schedule-item">
+                <div class="label">Ponton</div>
+                <div class="value">{{ schedule.ponton }}</div>
+            </div>
+            <div class="schedule-item">
+                <div class="label">Távozás</div>
+                <div class="value">{{ schedule.leave_date.strftime(timeformat) }}</div>
+            </div>
+        </div>
+
+        <div class="devider"></div>
+
+        <!-- Work details -->
+        <div class="work-details">
+            <div class="detail-row">
+                <div class="detail-label">Projektvezető</div>
+                <div class="detail-value leader">{{ work.leader }}</div>
+            </div>
+
+            <div class="work-info-grid">
+                <div class="info-box">
+                    <div class="label">Kezdés</div>
+                    <div class="value">{{ work.start_date.strftime(timeformat) if work.start_date else "–" }}</div>
+                </div>
+                <div class="info-box">
+                    <div class="label">Befejezés</div>
+                    <div class="value">{{ work.finished_date.strftime(timeformat) if work.finished_date else "–" }}</div>
+                </div>
+                <div class="info-box">
+                    <div class="label">Átadva</div>
+                    <div class="value">{{ "Igen" if work.transfered else "Nem" }}</div>
+                </div>
+                <div class="info-box">
+                    <div class="label">Alvállalkozó</div>
+                    <div class="value">{{ "Igen" if work.is_contractor else "Nem" }}</div>
+                </div>
+            </div>
+
+            {% if work.description %}
+            <div class="description-section">
+                <strong>MUNKA LEÍRÁSA:</strong>
+                <p>{{ work.description }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="devider"></div>
+
+        <!-- Status notes -->
+        <div class="notes-section">
+            <h3>Állapot jegyzetek</h3>
+            {% if status_notes and status_notes|length > 0 %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Jegyzet</th>
+                        <th>Dátum</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for note in status_notes %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ note.note }}</td>
+                        <td>{{ note.created_at.strftime(timeformat) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="no-notes">Nincsenek állapot jegyzetek ehhez a munkához.</p>
+            {% endif %}
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>EXAMPLE COMPANY Ltd. &mdash; 1158 Example Street, Budapest</p>
+            <p>Generated: {{ current_date }}</p>
+        </div>
+
+    </div>
+</body>
+
+</html>

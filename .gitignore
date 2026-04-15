@@ -16,3 +16,10 @@ quotations
 quotations/*
 lang
 lang/*
+work_reports
+work_reports/*
+otp_zip_worker
+otp_zip_worker/*
+sumatra_pdf
+sumatra_pdf/*
+*.pdf

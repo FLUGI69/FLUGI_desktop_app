@@ -5,6 +5,7 @@ class StatusTypeEnum(StrEnum):
     INBOX = "INBOX"
     STARRED = "STARRED"
     UNREAD = "UNREAD"
+    YELLOW_STAR = "YELLOW_STAR"
     IMPORTANT = "IMPORTANT"
     SENT = "SENT"
     DRAFT = "DRAFT"

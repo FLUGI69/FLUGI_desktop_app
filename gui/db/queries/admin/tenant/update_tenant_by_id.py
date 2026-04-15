@@ -1,4 +1,4 @@
-﻿from sqlalchemy import update, select, and_
+from sqlalchemy import update, select, and_
 from sqlalchemy.orm import selectinload, with_loader_criteria
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -613,8 +613,8 @@ class update_tenant_by_id(AsyncQueryBase):
                 
                 if item_type == StorageItemTypeEnum.TOOL:
                     
-                    note = "Rental period expired for %s. Rented tool: %s (ID: %s). \
-                        Rental period cost: %s HUF" % (
+                    note = "Lejárt %s bérlési időpontja. Bérelt szerszám: %s (ID: %s). \
+                        Bérlési időszak költsége: %s HUF" % (
                             result.tenant_name,
                             result.tool.name,
                             str(result.item_id),
@@ -622,8 +622,8 @@ class update_tenant_by_id(AsyncQueryBase):
                         )
                 if item_type == StorageItemTypeEnum.DEVICE:
                     
-                    note = "Rental period expired for %s. Rented device: %s (ID: %s). \
-                        Rental period cost: %s HUF" % (
+                    note = "Lejárt %s bérlési időpontja. Bérelt berendezés: %s (ID: %s). \
+                        Bérlési időszak költsége: %s HUF" % (
                             result.tenant_name,
                             result.device.name,
                             str(result.item_id),
@@ -725,8 +725,8 @@ class update_tenant_by_id(AsyncQueryBase):
         
         if extension_time is not None:
             
-            note = "Extension date: %s | Rental period expired for %s. Rented tool: %s (ID: %s). \
-                Rental period cost: %s HUF" % (
+            note = "Hosszabbítás időpontja: %s | Lejárt %s bérlési időpontja. Bérelt szerszám: %s (ID: %s). \
+                Bérlési időszak költsége: %s HUF" % (
                     extension_time,
                     current_tenant.tenant_name,
                     item,

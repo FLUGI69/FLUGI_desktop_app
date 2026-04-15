@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from pathlib import Path
 import os, sys
 from qasync import asyncSlot
@@ -153,13 +153,13 @@ class EmailView(QWidget, LoggerMixin):
         self._select_all_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.prev_btn = QToolButton()
-        self.prev_btn.setPricerowType(Qt.PricerowType.LeftPricerow)
+        self.prev_btn.setArrowType(Qt.ArrowType.LeftArrow)
         self.prev_btn.setAutoRaise(True)
         self.prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prev_btn.setFixedSize(25, 25)
 
         self.next_btn = QToolButton()
-        self.next_btn.setPricerowType(Qt.PricerowType.RightPricerow)
+        self.next_btn.setArrowType(Qt.ArrowType.RightArrow)
         self.next_btn.setAutoRaise(True)
         self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.next_btn.setFixedSize(25, 25)
@@ -167,7 +167,7 @@ class EmailView(QWidget, LoggerMixin):
         self.refresh_btn = QToolButton()
         self.refresh_btn.setObjectName("refresh")
         self.refresh_btn.setIcon(EmailView.icon("refresh.svg"))
-        self.refresh_btn.setToolTip("Refresh")
+        self.refresh_btn.setToolTip("Frissítés")
         self.refresh_btn.setAutoRaise(True)
         self.refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_btn.setIconSize(QSize(25, 25))
@@ -193,7 +193,7 @@ class EmailView(QWidget, LoggerMixin):
         self.compose_btn.setIcon(EmailView.icon("add.svg"))
         self.compose_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.compose_btn.setIconSize(QSize(25, 25))
-        self.compose_btn.setToolTip("Compose email")
+        self.compose_btn.setToolTip("Levél írás")
         self.compose_btn.clicked.connect(self.open_compose_modal)
 
         self.delete_selected_btn = QPushButton()
@@ -201,7 +201,7 @@ class EmailView(QWidget, LoggerMixin):
         self.delete_selected_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.delete_selected_btn.setIcon(EmailView.icon("trash.svg"))
         self.delete_selected_btn.setIconSize(QSize(20, 20))
-        self.delete_selected_btn.setToolTip("Delete selected")
+        self.delete_selected_btn.setToolTip("Kiválasztottak törlése")
         self.delete_selected_btn.clicked.connect(lambda: asyncio.create_task(self.delete_selected()))
 
         self.email_label = QLabel()
@@ -238,19 +238,38 @@ class EmailView(QWidget, LoggerMixin):
         
         self.current_count = 0
         self.target_count = target_count
+        self._count_step = max(1, target_count // 312)
+        self._animation_pending = True
 
+        if self.isVisible():
+            self._begin_count_animation()
+
+    def _begin_count_animation(self):
+        
+        if hasattr(self, 'timer') and self.timer.isActive():
+            self.timer.stop()
+            
+        self.current_count = 0
         self.timer = QTimer()
-        self.timer.setInterval(1)  # ms
+        self.timer.setInterval(16)  # ~60fps
         self.timer.timeout.connect(self.update_message_count)
         self.timer.start()
+        self._animation_pending = False
+
+    def showEvent(self, event):
+        
+        super().showEvent(event)
+        
+        if getattr(self, '_animation_pending', False) and self.target_count > 0:
+            self._begin_count_animation()
 
     def update_message_count(self):
         
         if self.current_count < self.target_count:
             
-            self.current_count += 1
+            self.current_count = min(self.current_count + self._count_step, self.target_count)
             
-            self.message_count_label.setText(f"Total messages: {self.current_count}")
+            self.message_count_label.setText(f"Összes üzenet: {self.current_count}")
             
         else:
             
@@ -404,11 +423,11 @@ class EmailView(QWidget, LoggerMixin):
         
         if headers is not None:
             
+            self.message_list.setUpdatesEnabled(False)
             self.message_list.clear()
             self.message_list.setUniformItemSizes(True)
             
             font = QFont()
-            
             font.setPointSize(10)
             
             for header in headers:
@@ -450,7 +469,7 @@ class EmailView(QWidget, LoggerMixin):
                 important_icon = EmailView.icon("important_checked.svg" if is_important == True else "important_unchecked.svg" if is_important == False else "")
                 important_btn.setIcon(important_icon)
                 important_btn.setToolTip("Fontos")
-                important_btn.setIconSize(QSize(18, 18))
+                important_btn.setIconSize(QSize(20, 20))
                 
                 important_btn.clicked.connect(partial(self._toggle_important_btn, header, important_btn))
 
@@ -459,7 +478,7 @@ class EmailView(QWidget, LoggerMixin):
                 trash_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 trash_btn.setIcon(EmailView.icon("trash.svg"))
                 trash_btn.setIconSize(QSize(20, 20))
-                trash_btn.setToolTip("Delete")
+                trash_btn.setToolTip("Törlés")
                 
                 trash_btn.clicked.connect(lambda checked, item = list_item: self.on_delete_clicked(item))
                 
@@ -483,9 +502,11 @@ class EmailView(QWidget, LoggerMixin):
                 
                 self.message_list.addItem(list_item)
                 self.message_list.setItemWidget(list_item, container)
-                self.message_list.setSpacing(2)
+                self.message_list.setSpacing(0)
                 
                 list_item.setData(Qt.ItemDataRole.UserRole, header)
+
+            self.message_list.setUpdatesEnabled(True)
 
     def _toggle_select_all(self, state):
         
@@ -719,6 +740,6 @@ class EmailView(QWidget, LoggerMixin):
         if getattr(self.gmail_login_window, "status_label", None) is not None:
             
             self.gmail_login_window.status_label.setObjectName("info")
-            self.gmail_login_window.status_label.setText("Successful logout...")
+            self.gmail_login_window.status_label.setText("Sikeres kijelentkezés...")
             self.gmail_login_window.status_label.style().unpolish(self.gmail_login_window.status_label)
             self.gmail_login_window.status_label.style().polish(self.gmail_login_window.status_label)

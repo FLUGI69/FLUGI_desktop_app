@@ -26,7 +26,7 @@ class SSHTunnel(LoggerMixin):
         ssh_pass: Union[str, types.NoneType] = None,
         ssh_private_key_ppk_path: Union[str, types.NoneType] = None,
         sql_hostname: str = "127.0.0.1",
-        sql_port: int = 1234,
+        sql_port: int = 3306,
         ):
 
         self.name = name

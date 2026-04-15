@@ -53,7 +53,7 @@ class PlayWrightContextManager(LoggerMixin):
     
     async def start(self) -> Playwright:
         
-        self.log.info("Async Playwright context manager -> START")
+        self.log.info("Async Playwright context manager -> Start")
         
         return await self.__aenter__()
 
@@ -77,7 +77,7 @@ class PlayWrightContextManager(LoggerMixin):
                     
                 finally:
                     
-                    self.log.info("Async Playwright context manager -> STOP")
+                    self.log.info("Async Playwright context manager -> Stop")
                     
                     self._playwright = None
                     

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 from PyQt6.QtWidgets import (
     QTableWidget,
@@ -10,18 +10,27 @@ from PyQt6.QtWidgets import (
     QHBoxLayout
 )
 from PyQt6.QtGui import QCursor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from utils.dc.tools import ToolsData, ToolsCacheData
+from utils.handlers.math import UtilityCalculator
 from utils.logger import LoggerMixin
+from config import Config
 
 class ToolsTable(QTableWidget, LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, parent = None):
+    header_clicked = pyqtSignal(int)
+    
+    def __init__(self, 
+        utility_calculator = None, 
+        parent = None
+        ):
         
         super().__init__(parent)
+        
+        self.utility_calculator: UtilityCalculator = utility_calculator
         
         self.__init_table()
         
@@ -35,9 +44,9 @@ class ToolsTable(QTableWidget, LoggerMixin):
         
         self.verticalHeader().setVisible(False)
         
-        self.setColumnCount(6)
+        self.setColumnCount(9)
         
-        self.setHorizontalHeaderLabels(["", "Name", "Type / Serial number:", "Quantity", "Scrap", "At tenant"])
+        self.setHorizontalHeaderLabels(["", "Megnevezés", "Típus / Gyáriszám:", "Mennyiség", "Selejt", "Bérlőnél", "Beszerzés időpontja", "Nettó egységár", "Összesített ár"])
         
         self.setColumnWidth(0, 40)
     
@@ -45,9 +54,17 @@ class ToolsTable(QTableWidget, LoggerMixin):
         
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         
-        for col in range(1, 6):
+        for col in range(1, self.columnCount()):
             
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            
+            self.setColumnWidth(col, 300)
+        
+        header.setStretchLastSection(False)
+        
+        header.sectionClicked.connect(self.header_clicked.emit)
+        
+        header.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -60,23 +77,29 @@ class ToolsTable(QTableWidget, LoggerMixin):
               
     def load_data(self, tools_cache: ToolsCacheData):
         
-        self.log.debug("Preparing to load the following tool records into the table: %s" % str(tools_cache))
+        items = tools_cache.items if hasattr(tools_cache, "items") else []
         
-        self.clearContents()
+        self.log.debug("Preparing to load %d tool records into the table (first 10: %s)" % (len(items), str(items[:10])))
         
-        self.setRowCount(0)
-
-        if hasattr(tools_cache, "items"):
+        self.setUpdatesEnabled(False)
+        
+        try:
+        
+            self.clearContents()
             
-            for row_index, item in enumerate(tools_cache.items):
+            self.setRowCount(0)
+
+            if hasattr(tools_cache, "items"):
                 
-                if item is not None and item.is_deleted == False:
-                    
-                    self.insertRow(row_index)
+                visible_items = [item for item in tools_cache.items if item is not None and item.is_deleted == False]
+                
+                self.setRowCount(len(visible_items))
+                
+                for row_index, item in enumerate(visible_items):
 
                     checkbox = QCheckBox()
                     checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                    checkbox.setProperty("tools_data", item)  # full item attached 
+                    checkbox.setProperty("tools_data", item)
                     
                     checkbox_widget = QWidget()
                     
@@ -89,12 +112,24 @@ class ToolsTable(QTableWidget, LoggerMixin):
                     
                     self.setCellWidget(row_index, 0, checkbox_widget)
 
+                    if self.utility_calculator and item.price is not None and item.quantity is not None:
+                        
+                        raw_total = float(self.utility_calculator.arithmetic_decimal(item.price, item.quantity, "multiply", 2))
+                        total_price = f"{raw_total:,.2f}".replace(",", ".") + " HUF"
+                   
+                    else:
+                        
+                        total_price = "N/A"
+
                     fields = [
                         item.name if item.name else "N/A",
                         item.manufacture_number if item.manufacture_number else "N/A",
                         f"{item.quantity:.4f}" if item.quantity is not None else "N/A",
-                        "Yes" if item.is_scrap == True else "No" if item.is_scrap == False else "N/A",
-                        "No" if item.returned == True else "Yes" if item.returned == False else "N/A",
+                        "Igen" if item.is_scrap == True else "Nem" if item.is_scrap == False else "N/A",
+                        "Nem" if item.returned == True else "Igen" if item.returned == False else "N/A",
+                        item.purchase_date.strftime(Config.time.timeformat) if item.purchase_date is not None else "N/A",
+                        f"{item.price:,.2f}".replace(",", ".") + " HUF" if item.price is not None else "N/A",
+                        total_price,
                         item.id
                     ]
 
@@ -104,6 +139,10 @@ class ToolsTable(QTableWidget, LoggerMixin):
                         cell.setForeground(Qt.GlobalColor.white)
                         cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.setItem(row_index, col_index, cell)
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
                         
     def get_selected_cache_data(self) -> list[ToolsData]:
         

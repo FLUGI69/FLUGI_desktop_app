@@ -1,4 +1,4 @@
-﻿import typing as t
+import typing as t
 import logging
 from copy import deepcopy
 from datetime import datetime
@@ -47,7 +47,7 @@ class ScheduleTable(QTableWidget, LoggerMixin):
         
         self.setColumnCount(7)
         
-        self.setHorizontalHeaderLabels(["#", "Name", "Port", "Arrival", "Pontoon", "Departure", ""])
+        self.setHorizontalHeaderLabels(["#", "Név", "Kikötő", "Érkezés", "Ponton", "Távozás", ""])
 
         header = self.horizontalHeader()
 
@@ -77,58 +77,68 @@ class ScheduleTable(QTableWidget, LoggerMixin):
 
     def load_data(self, boat_data: t.List[SelectedBoatData]):
 
-        self.log.debug("Preparing to load the following boat records into the table: %s" % str(boat_data))
+        self.log.debug("Preparing to load %d boat schedule records into the table (first 10: %s)" % (len(boat_data) if isinstance(boat_data, list) else 0, str(boat_data[:10]) if isinstance(boat_data, list) else "[]"))
         
-        self.clearContents()
+        self.setUpdatesEnabled(False)
         
-        self.setRowCount(0)
+        try:
         
-        row_index = 0
-
-        if isinstance(boat_data, list) and all(isinstance(row, SelectedBoatData) for row in boat_data):
+            self.clearContents()
             
-            for boat in boat_data:
+            self.setRowCount(0)
+
+            if isinstance(boat_data, list) and all(isinstance(row, SelectedBoatData) for row in boat_data):
                 
-                schedules = boat.schedule
+                total_rows = sum(len(boat.schedule) for boat in boat_data)
                 
-                for row_index, row in enumerate(schedules):
-
-                    self.insertRow(row_index)
-
-                    self.setRowHeight(row_index, 50)
+                self.setRowCount(total_rows)
+                
+                row_index = 0
+                
+                for boat in boat_data:
                     
-                    edit_btn = QPushButton()
-                    edit_btn.setObjectName("WorkBtn")
-                    edit_btn.setStyleSheet(Config.styleSheets.work_btn)
-                    edit_btn.setFixedWidth(100)
-                    edit_btn.setFixedHeight(50)
-                    edit_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                    edit_btn.setProperty("ship_schedule", row)
-                    edit_btn.setIcon(ScheduleTable.icon("edit.svg"))
-                    edit_btn.setIconSize(QSize(20, 20))
-                    edit_btn.setToolTip("Edit")
-                    edit_btn.clicked.connect(lambda _, idx = row_index: self.get_selected_and_modified_schedules(idx))
+                    schedules = boat.schedule
                     
-                    self.setCellWidget(row_index, 6, edit_btn)
+                    for schedule_idx, row in enumerate(schedules):
 
-                    fields = [
-                        str(boat.boat_id) if row_index == 0 else "",
-                        boat.name if (row_index == 0 and boat.name != "") else "",
-                        row.location if row.location != "" else "N/A",
-                        row.arrival_date.strftime(Config.time.timeformat) if row.arrival_date else "N/A",
-                        row.ponton if row.ponton != "" else "N/A",
-                        row.leave_date.strftime(Config.time.timeformat) if row.leave_date else "N/A",
-                    ]
-
-                    for col_index, value in enumerate(fields):
+                        self.setRowHeight(row_index, 50)
                         
-                        item = QTableWidgetItem(value)
-                        item.setForeground(Qt.GlobalColor.white)
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        edit_btn = QPushButton()
+                        edit_btn.setObjectName("WorkBtn")
+                        edit_btn.setStyleSheet(Config.styleSheets.work_btn)
+                        edit_btn.setFixedWidth(100)
+                        edit_btn.setFixedHeight(50)
+                        edit_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                        edit_btn.setProperty("ship_schedule", row)
+                        edit_btn.setIcon(ScheduleTable.icon("edit.svg"))
+                        edit_btn.setIconSize(QSize(20, 20))
+                        edit_btn.setToolTip("Módosítás")
+                        edit_btn.clicked.connect(lambda _, idx = row_index: self.get_selected_and_modified_schedules(idx))
                         
-                        self.setItem(row_index, col_index, item)
+                        self.setCellWidget(row_index, 6, edit_btn)
 
-                    row_index += 1
+                        fields = [
+                            str(boat.boat_id) if schedule_idx == 0 else "",
+                            boat.name if (schedule_idx == 0 and boat.name != "") else "",
+                            row.location if row.location != "" else "N/A",
+                            row.arrival_date.strftime(Config.time.timeformat) if row.arrival_date else "N/A",
+                            row.ponton if row.ponton != "" else "N/A",
+                            row.leave_date.strftime(Config.time.timeformat) if row.leave_date else "N/A",
+                        ]
+
+                        for col_index, value in enumerate(fields):
+                            
+                            item = QTableWidgetItem(value)
+                            item.setForeground(Qt.GlobalColor.white)
+                            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            
+                            self.setItem(row_index, col_index, item)
+
+                        row_index += 1
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
                 
     def get_selected_and_modified_schedules(self, row_idx: int) -> t.Tuple[list[ShipSchedule], list[ShipSchedule]]:
         
@@ -233,4 +243,3 @@ class ScheduleTable(QTableWidget, LoggerMixin):
             except ValueError:
             
                 raise InvalidDateFormatError(value)
-

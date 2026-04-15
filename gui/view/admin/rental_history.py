@@ -1,4 +1,4 @@
-﻿import os
+import os
 import logging
 import asyncio
 import typing as t
@@ -48,11 +48,12 @@ class RentalHistoryContent(QWidget, LoggerMixin):
 
         self.admin_view = admin_view
         
-        self._lock = admin_view.main_window.app.rental_lock
-        
         self.cache_data: RentalHistoryCacheData | None = None
         
-        self.rental_history_cache = RentalHistoryCacheService(admin_view.redis_client)
+        self.rental_history_cache = RentalHistoryCacheService(
+            redis_client = admin_view.redis_client,
+            rental_lock = admin_view.main_window.app.rental_lock
+        )
         
         self.confirm_action_modal = ConfirmActionModal()
         
@@ -109,7 +110,7 @@ class RentalHistoryContent(QWidget, LoggerMixin):
         
         title_row = QHBoxLayout()
 
-        title = QLabel("Rental history")
+        title = QLabel("Bérlési előzmények")
         title.setObjectName("BoatTitleLabel")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFixedHeight(40)
@@ -121,7 +122,7 @@ class RentalHistoryContent(QWidget, LoggerMixin):
         self.input_field = QLineEdit()
         self.input_field.setObjectName("BoatSearchInput")
         self.input_field.setFixedHeight(35)
-        self.input_field.setPlaceholderText("Search...")
+        self.input_field.setPlaceholderText("Keresés...")
         self.input_field.setCursor(Qt.CursorShape.PointingHandCursor)
         self.input_field.textChanged.connect(self._handle_search_input)
         
@@ -129,7 +130,7 @@ class RentalHistoryContent(QWidget, LoggerMixin):
         self.print_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.print_btn.setFixedHeight(50)
         self.print_btn.setObjectName("TrashButton")
-        self.print_btn.setToolTip("Print")
+        self.print_btn.setToolTip("Nyomtatás")
         self.print_btn.setIcon(RentalHistoryContent.icon("printer.svg"))
         self.print_btn.setIconSize(QSize(25, 25))
         self.print_btn.clicked.connect(self.__print_table)
@@ -145,14 +146,14 @@ class RentalHistoryContent(QWidget, LoggerMixin):
         h_layout.addStretch(1)
 
         header_labels = [
-            "Tenant",
-            "Rented item",
-            "Quantity",
-            "Rental start",
-            "Rental end",
+            "Bérlő",
+            "Bérelt tárgy",
+            "Mennyiség",
+            "Bérlés kezdete",
+            "Bérlés vége",
             "Visszaadva",
             "Fizetve",
-            "Total",
+            "Összesen",
             ""
         ]
 
@@ -238,11 +239,11 @@ class RentalHistoryContent(QWidget, LoggerMixin):
             
             rental_end = "Nincs megadva" if rental_history.tenant.rental_end is None else rental_history.tenant.rental_end.strftime(Config.time.timeformat)
             
-            returned = "Yes" if rental_history.tenant.returned is True else "No"
+            returned = "Igen" if rental_history.tenant.returned is True else "Nem"
             
-            is_paid = "Yes" if rental_history.is_paid is True else "No"
+            is_paid = "Igen" if rental_history.is_paid is True else "Nem"
             
-            amount = f"{rental_history.tenant.rental_price:,.2f}".replace(",", ".") + " HUF" if rental_history.tenant.rental_price != 0 else "Lent out"
+            amount = f"{rental_history.tenant.rental_price:,.2f}".replace(",", ".") + " HUF" if rental_history.tenant.rental_price != 0 else "Kölcsön adva"
             
             list_item = QListWidgetItem()
             
@@ -302,7 +303,7 @@ class RentalHistoryContent(QWidget, LoggerMixin):
             edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             edit_btn.setIcon(RentalHistoryContent.icon("edit.svg"))
             edit_btn.setIconSize(QSize(20, 20))
-            edit_btn.setToolTip("Edit")
+            edit_btn.setToolTip("Módosítás")
             
             edit_btn.clicked.connect(lambda _, item = list_item: self.on_button_clicked(item)) 
             
@@ -335,7 +336,7 @@ class RentalHistoryContent(QWidget, LoggerMixin):
             
             self.rental_history_list.addItem(list_item)
             self.rental_history_list.setItemWidget(list_item, container)
-            self.rental_history_list.setSpacing(2)
+            self.rental_history_list.setSpacing(0)
             
             list_item.setData(Qt.ItemDataRole.UserRole, rental_history)
             
@@ -407,11 +408,11 @@ class RentalHistoryContent(QWidget, LoggerMixin):
                 
                 self.log.debug("Payment status (is_paid): %s -> %s" % (previous_rental_history.is_paid, updated_data.is_paid))
                 
-                prev_returned = "at tenant" if previous_rental_history.tenant.returned else "in storage"
-                new_returned = "at tenant" if updated_data.tenant.returned else "in storage"
+                prev_returned = "bérlőnél van" if previous_rental_history.tenant.returned else "raktárban van"
+                new_returned = "bérlőnél van" if updated_data.tenant.returned else "raktárban van"
 
-                prev_paid = "paid" if previous_rental_history.is_paid else "outstanding"
-                new_paid = "paid" if updated_data.is_paid else "outstanding"
+                prev_paid = "törlesztve" if previous_rental_history.is_paid else "hátralékos"
+                new_paid = "törlesztve" if updated_data.is_paid else "hátralékos"
 
                 lines = []
 
@@ -421,12 +422,12 @@ class RentalHistoryContent(QWidget, LoggerMixin):
 
                 if prev_paid != new_paid:
                     
-                    lines.append(f"Costs: {prev_paid} --> {new_paid}")
+                    lines.append(f"Költségek: {prev_paid} --> {new_paid}")
 
-                lines.append(f"Amount: {updated_data.tenant.rental_price:,.0f}".replace(",", ".") + " HUF")
+                lines.append(f"Összeg: {updated_data.tenant.rental_price:,.0f}".replace(",", ".") + " HUF")
 
                 confirm_text = (
-                    f"{updated_data.tenant.tenant_name} you are modifying rental data:\n\n"
+                    f"{updated_data.tenant.tenant_name} bérlési adatait módosítod:\n\n"
                     + "\n".join(lines)
                     + "\n\nBiztosan folytatod?"
                 )
@@ -451,22 +452,20 @@ class RentalHistoryContent(QWidget, LoggerMixin):
         returned = to_data.tenant.returned if from_data.tenant.returned != to_data.tenant.returned else None
             
         is_paid = to_data.is_paid if from_data.is_paid != to_data.is_paid else None
-        
-        async with self._lock:
             
-            await queries.update_rental_history_by_tenant_id(
-                tenant_id = from_data.tenant.tenant_id,
-                item_type = from_data.tenant.item_type,
-                item_id = from_data. tenant.item_id,
-                current_is_paid = from_data.is_paid,
-                current_returned = from_data.tenant.returned,
-                current_rental_start = from_data.tenant.rental_start,
-                current_rental_end = from_data.tenant.rental_end,
-                current_amount = from_data.tenant.rental_price,
-                rented_quantity = from_data.tenant.quantity,
-                new_is_paid = is_paid,
-                new_returned = returned
-            )
+        await queries.update_rental_history_by_tenant_id(
+            tenant_id = from_data.tenant.tenant_id,
+            item_type = from_data.tenant.item_type,
+            item_id = from_data. tenant.item_id,
+            current_is_paid = from_data.is_paid,
+            current_returned = from_data.tenant.returned,
+            current_rental_start = from_data.tenant.rental_start,
+            current_rental_end = from_data.tenant.rental_end,
+            current_amount = from_data.tenant.rental_price,
+            rented_quantity = from_data.tenant.quantity,
+            new_is_paid = is_paid,
+            new_returned = returned
+        )
             
         self.rental_worker.notify_cache_update_needed(True)
         
@@ -495,4 +494,3 @@ class RentalHistoryContent(QWidget, LoggerMixin):
                 await storage_view.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
             
         await self.load_cache_data()
-

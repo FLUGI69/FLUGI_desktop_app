@@ -18,6 +18,6 @@ class PersonnelContent(QWidget, LoggerMixin):
         
         layout = QVBoxLayout(self)
         
-        layout.addWidget(QLabel("This feature is currently unavailable!"))
+        layout.addWidget(QLabel("Ez a funkció jelenleg még nem elérhető!"))
 
         self.setLayout(layout)

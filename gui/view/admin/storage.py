@@ -1,4 +1,4 @@
-﻿from qasync import asyncSlot
+from qasync import asyncSlot
 import os
 import asyncio
 import typing as t
@@ -17,10 +17,15 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QPushButton,
     QLabel,
-    QInputDialog
+    QInputDialog,
+    QDialog,
+    QDialogButtonBox,
+    QSpinBox,
+    QFormLayout,
+    QDateEdit
 )
 from PyQt6.QtGui import QCursor, QDesktopServices, QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QSize, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QSize, QTimer, QDate
 
 from weasyprint import HTML
 import pandas as pd
@@ -59,16 +64,20 @@ class AdminStorageContent(QWidget, LoggerMixin):
         super().__init__()
         
         self.spinner = admin.main_window.app.spinner
-        
-        self._admin_storage_lock = asyncio.Lock()
-        
+
         self.datatable_helper = admin.main_window.app.datatable_helper
         
         self.storage_cache_data: StorageCacheData | None = None
         
-        self.storage_cache = StorageCacheService(admin.redis_client)
+        self.storage_cache = StorageCacheService(
+            redis_client = admin.redis_client,
+            admin_storage_lock = admin.main_window.app.admin_storage_lock
+        )
         
-        self.storage_datatable_cache = AdminStorageItemsCacheService(admin.redis_client)
+        self.storage_datatable_cache = AdminStorageItemsCacheService(
+            redis_client = admin.redis_client,
+            admin_storage_lock = admin.main_window.app.admin_storage_lock
+        )
         
         self.storage_table = StorageTable(self)
         
@@ -121,8 +130,8 @@ class AdminStorageContent(QWidget, LoggerMixin):
         menu_layout.setContentsMargins(0, 0, 0, 0)
 
         self.menu_buttons = {
-            "add_btn": QPushButton("Add"),
-            "edit_btn": QPushButton("Edit storage")
+            "add_btn": QPushButton("Hozzáadás"),
+            "edit_btn": QPushButton("Raktár módosítás")
         }        
         
         self.error_label = QLabel()
@@ -178,7 +187,7 @@ class AdminStorageContent(QWidget, LoggerMixin):
         right_panel.setContentsMargins(0, 0, 0, 0)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search...")
+        self.search_input.setPlaceholderText("Keresés...")
         self.search_input.setObjectName("WarehouseSearchInput")
         self.search_input.textChanged.connect(self._handle_search_input)
 
@@ -193,11 +202,11 @@ class AdminStorageContent(QWidget, LoggerMixin):
         self.print_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.print_btn.setFixedHeight(50)
         self.print_btn.setObjectName("TrashButton")
-        self.print_btn.setToolTip("Print")
+        self.print_btn.setToolTip("Nyomtatás")
         self.print_btn.setIcon(AdminStorageContent.icon("printer.svg"))
         self.print_btn.setIconSize(QSize(25, 25))
         self.print_btn.clicked.connect(self.__print_table)
-        
+
         self.download_btn = QPushButton()
         self.download_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.download_btn.setFixedHeight(50)
@@ -261,17 +270,44 @@ class AdminStorageContent(QWidget, LoggerMixin):
         if self.storage_datatable_data is None or not hasattr(self.storage_datatable_data, "items"):
             return
 
-        current_year = datetime.now(Config.time.timezone_utc).year
+        now = datetime.now(Config.time.timezone_utc)
         
-        dialog = QInputDialog(self)
-        dialog.setWindowTitle("Év kiválasztása")
-        dialog.setInputMode(QInputDialog.InputMode.IntInput)
-        dialog.setIntRange(2000, 2100)
-        dialog.setIntValue(current_year)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Dátum tartomány kiválasztása")
         dialog.setStyleSheet(Config.styleSheets.input_dialog)
         
+        form_layout = QFormLayout(dialog)
+        
+        from_date = QDateEdit(dialog)
+        from_date.setDisplayFormat("yyyy. MMMM dd.")
+        from_date.setDate(QDate(now.year, 1, 1))
+        from_date.setMinimumDate(QDate(2000, 1, 1))
+        from_date.setMaximumDate(QDate(2100, 12, 31))
+        from_date.setCalendarPopup(True)
+        from_date.setFixedHeight(45)
+        
+        to_date = QDateEdit(dialog)
+        to_date.setDisplayFormat("yyyy. MMMM dd.")
+        to_date.setDate(QDate(now.year, now.month, now.day))
+        to_date.setMinimumDate(QDate(2000, 1, 1))
+        to_date.setMaximumDate(QDate(2100, 12, 31))
+        to_date.setCalendarPopup(True)
+        to_date.setFixedHeight(45)
+        
+        form_layout.addRow("tól:", from_date)
+        form_layout.addRow("ig:", to_date)
+        
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            dialog
+        )
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        form_layout.addRow(button_box)
+        
         accepted = dialog.exec()
-        year = dialog.intValue()
+        date_from = from_date.date().toPyDate()
+        date_to = to_date.date().toPyDate()
 
         if accepted:
                 
@@ -279,11 +315,15 @@ class AdminStorageContent(QWidget, LoggerMixin):
             
             for item in self.storage_datatable_data.items:
                 
-                purchase_date = getattr(item, "purchase_date", None)
+                purchase_date: datetime = getattr(item, "purchase_date", None)
                 
-                if purchase_date is not None and hasattr(purchase_date, "year") and purchase_date.year == year:
+                if purchase_date is not None:
                     
-                    filtered_items.append(item)
+                    purchase_date = purchase_date.date() if hasattr(purchase_date, "date") and callable(purchase_date.date) else purchase_date
+                    
+                    if date_from <= purchase_date < date_to:
+                    
+                        filtered_items.append(item)
             
             if len(filtered_items) == 0:
                 return
@@ -297,7 +337,7 @@ class AdminStorageContent(QWidget, LoggerMixin):
                 formatted_price = "{:,.0f}".format(price_value).replace(",", ".") if price_value is not None else "N/A"
                 
                 rows.append({
-                    "#": idx,
+                    "#": idx + 1,
                     "Megnevezés": self.datatable_helper.getAttribute(item, "name"),
                     "Gyáriszám": self.datatable_helper.getAttribute(item, "manufacture_number"),
                     "Mennyiség": str(self.datatable_helper.getAttribute(item, "quantity")),
@@ -370,7 +410,7 @@ class AdminStorageContent(QWidget, LoggerMixin):
                         <td>{self.datatable_helper.getAttribute(item, "purchase_source")}</td>
                         <td>{self.datatable_helper.getAttributeDate(item, "purchase_date")}</td>
                         <td>{self.datatable_helper.getAttributeDate(item, "inspection_date")}</td>
-                        <td>{"Yes" if getattr(item, "is_scrap", False) is True else "No" \
+                        <td>{"Igen" if getattr(item, "is_scrap", False) is True else "Nem" \
                             if getattr(item, "is_scrap", False) is False else "N/A"}</td>
                     </tr>
                     """
@@ -384,16 +424,16 @@ class AdminStorageContent(QWidget, LoggerMixin):
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th>Name</th>
-                                <th>Serial number</th>
-                                <th>Quantity</th>
-                                <th>Manufacturing year</th>
-                                <th>Price</th>
-                                <th>Commissioning date</th>
-                                <th>Purchase source</th>
-                                <th>Purchase date</th>
-                                <th>Inspection dates</th>
-                                <th>Scrapezve</th>
+                                <th>Megnevezés</th>
+                                <th>Gyáriszám</th>
+                                <th>Mennyiség</th>
+                                <th>Gyártási év</th>
+                                <th>Ár</th>
+                                <th>Üzembe helyezés időpontja</th>
+                                <th>Beszerzés forrása</th>
+                                <th>Beszerzés időpontja</th>
+                                <th>Ellenőrző felülvizsgálatok időpontja</th>
+                                <th>Selejtezve</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -409,7 +449,7 @@ class AdminStorageContent(QWidget, LoggerMixin):
             <html>
             <head>
             <style>
-                body {{ margin: 1.5cm; font-family: Priceial, sans-serif; }}
+                body {{ margin: 1.5cm; font-family: Arial, sans-serif; }}
                 table {{ width: 100%; border-collapse: collapse; font-size: 10pt; }}
                 th, td {{ border: 1px solid black; padding: 4px; text-align: center; word-wrap: break-word; }}
                 th {{ background-color: #cccccc; }}
@@ -501,8 +541,8 @@ class AdminStorageContent(QWidget, LoggerMixin):
                     data = self.add_storage_modal.get_form_data()
                     
                     confirm_text = (
-                        f"You are recording the following item:\n\n"
-                        f"Name:\n{data.name}\n\n"
+                        f"Következő tételt rögzíted:\n\n"
+                        f"Név:\n{data.name}\n\n"
                         f"Telephely:\n{data.location}"
                         "\nBiztosan folytatod?"
                     )
@@ -573,13 +613,11 @@ class AdminStorageContent(QWidget, LoggerMixin):
             if isinstance(data, StorageData):
                     
                 try:
-                    
-                    async with self._admin_storage_lock:
                         
-                        await queries.insert_storage_data(
-                            name = data.name,
-                            location = data.location
-                        )
+                    await queries.insert_storage_data(
+                        name = data.name,
+                        location = data.location
+                    )
 
                     await self.storage_cache.clear_cache(Config.redis.cache.storage.id)
                     
@@ -603,7 +641,7 @@ class AdminStorageContent(QWidget, LoggerMixin):
 
                 except Exception as e:
                     
-                    self.error_labels[sender].setText("Failed to save the data")
+                    self.error_labels[sender].setText("Nem sikerült rögzíteni az adatot")
                     self.error_labels[sender].setVisible(True)
                     
                     self.log.exception("Failed to insert storage data: %s" % str(e))
@@ -697,4 +735,3 @@ class AdminStorageContent(QWidget, LoggerMixin):
         
         self.results_table = new_view
     
-

@@ -17,9 +17,21 @@ class select_all_storage_items(AsyncQueryBase):
                 
             ).options(
                 
-                selectinload(example_db.storage.materials),
-                selectinload(example_db.storage.tools).selectinload(example_db.tool.tenant),
-                selectinload(example_db.storage.devices).selectinload(example_db.device.tenant),
+                selectinload(
+                    example_db.storage.materials.and_(
+                        example_db.material.is_deleted == False
+                    )
+                ),
+                selectinload(
+                    example_db.storage.tools.and_(
+                        example_db.tool.is_deleted == False
+                    )
+                ).selectinload(example_db.tool.tenant),
+                selectinload(
+                    example_db.storage.devices.and_(
+                        example_db.device.is_deleted == False
+                    )
+                ).selectinload(example_db.device.tenant),
             )
         )
 

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import typing as t
 import os
 
@@ -98,7 +98,7 @@ class ImageItemWidget(QWidget,LoggerMixin):
         self.delete_button.setFixedHeight(35)
         self.delete_button.setFixedWidth(150)
         self.delete_button.setIconSize(QSize(20, 20))
-        self.delete_button.setToolTip("Delete")
+        self.delete_button.setToolTip("Törlés")
         
         self.delete_button.clicked.connect(self._handle_delete)
 

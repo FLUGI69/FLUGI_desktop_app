@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 
 from PyQt6.QtWidgets import (
@@ -30,7 +30,7 @@ class EditRentalHistoryModal(QDialog, LoggerMixin):
         
         self.previous_rental_history_data: RentalHistoryData = None
         
-        self.setWindowTitle("Edit inventory:")
+        self.setWindowTitle("Készlet módosítása:")
         
         self.setModal(True)
         
@@ -52,7 +52,7 @@ class EditRentalHistoryModal(QDialog, LoggerMixin):
         
         middle_labels_layout = QHBoxLayout()
      
-        info_label = QLabel("Tenant / rented item:")
+        info_label = QLabel("Bérlő / bérelt tárgy:")
         info_label.setObjectName("BoatTitleLabel") 
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter) 
         info_label.setFixedHeight(25)
@@ -101,7 +101,7 @@ class EditRentalHistoryModal(QDialog, LoggerMixin):
         top_layout.setContentsMargins(10, 10, 10, 10)
         top_layout.setSpacing(10)
         
-        self.title = QLabel("Modify rental status")
+        self.title = QLabel("Bérlési státusz módosítása")
         self.title.setObjectName("BoatTitleLabel")
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter) 
         self.title.setFixedHeight(40)
@@ -122,16 +122,16 @@ class EditRentalHistoryModal(QDialog, LoggerMixin):
         self.dropdown_returned = QComboBox()
         self.dropdown_returned.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_returned.addItem("", None)
-        self.dropdown_returned.addItem("Yes", True)
-        self.dropdown_returned.addItem("No", False)
+        self.dropdown_returned.addItem("Igen", True)
+        self.dropdown_returned.addItem("Nem", False)
         self.dropdown_returned.setFixedHeight(35)
         
         self.label_is_paid = QLabel("Kifizetve:")
         self.dropdown_is_paid = QComboBox()
         self.dropdown_is_paid.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_is_paid.addItem("", None)
-        self.dropdown_is_paid.addItem("Yes", True)
-        self.dropdown_is_paid.addItem("No", False)
+        self.dropdown_is_paid.addItem("Igen", True)
+        self.dropdown_is_paid.addItem("Nem", False)
         self.dropdown_is_paid.setFixedHeight(35)
         
         self.bottom_layout = QVBoxLayout()
@@ -250,7 +250,7 @@ class EditRentalHistoryModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -266,7 +266,7 @@ class EditRentalHistoryModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -304,4 +304,3 @@ class EditRentalHistoryModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

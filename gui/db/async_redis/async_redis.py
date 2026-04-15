@@ -1,17 +1,24 @@
 import asyncio
 import base64
 from datetime import datetime
-from redis.asyncio import Redis
+import uuid
+from redis.asyncio import Redis, ConnectionPool
 from redis.exceptions import ConnectionError as RedisConnectionError
 import json
+import socket
+import os
 import typing as t
+import types
+import logging
+import time
 
 from utils.logger import LoggerMixin
 from ..network.connections import SSHTunnelConnections, SSHTunnelConnection
 from ..network.reconnect_service import SSHTunnelReconnectService
 from ..network.sshtunnel import SSHTunnel
-import logging
 from .async_redis_callback import AsyncRedisCallback
+from websocket.ws_client import QtApplicationSocketClient
+from config import Config
 
 class AsyncRedisClient(LoggerMixin):
     
@@ -21,7 +28,7 @@ class AsyncRedisClient(LoggerMixin):
         
         self.callback = AsyncRedisCallback(self)
     
-        self.websocket_client = None
+        self.websocket_client: QtApplicationSocketClient = None
         
         self.client = None
         
@@ -36,6 +43,20 @@ class AsyncRedisClient(LoggerMixin):
         self.db = None
         
         self.password = None
+        
+    def _make_lock_token(self) -> str:
+        return "%s:%s:%s" % (socket.gethostname(), os.getpid(), uuid.uuid4().hex)
+    
+    async def _release_owned_lock(self, lock_key: str, token: str) -> bool:
+        
+        result = await self.client.eval(
+            Config.redis.cache.lock_release_script,
+            1,
+            lock_key,
+            token
+        )
+        
+        return result == 1
         
     def encode_for_cache(self, value: t.Any) -> t.Any:
         """
@@ -91,7 +112,7 @@ class AsyncRedisClient(LoggerMixin):
         
         return value
     
-    def make_readable_cache_log(self, cached_data, max_len: int = 30) -> str:
+    def make_readable_cache_log(self, cached_data, max_len: int = 30, max_items: int = 10) -> str:
         
         if cached_data is not None:
 
@@ -129,6 +150,10 @@ class AsyncRedisClient(LoggerMixin):
                     
                     if isinstance(value, dict) and "items" in value and isinstance(value["items"], list):
                         
+                        total_items = len(value["items"])
+                        
+                        value["items"] = value["items"][:max_items]
+                        
                         for item in value["items"]:
                             
                             if isinstance(item, dict):
@@ -142,6 +167,8 @@ class AsyncRedisClient(LoggerMixin):
                                         bin_str = ''.join(f'{b:08b}' for b in bval)
                                         
                                         item[key] = bin_str[:max_len] + "..." if len(bin_str) > max_len else bin_str
+                        
+                        value["total_count"] = total_items
 
             return json.dumps(data, ensure_ascii = False)
 
@@ -228,10 +255,14 @@ class AsyncRedisClient(LoggerMixin):
         self.password = password
         
         self.client = Redis(
-            host = host,
-            port = port,
-            db = db,
-            password = password
+            connection_pool = ConnectionPool(
+                host = host,
+                port = port,
+                db = db,
+                password = password,
+                max_connections = 10,
+                decode_responses = False
+            )
         )
 
         try:
@@ -275,7 +306,7 @@ class AsyncRedisClient(LoggerMixin):
         
         result = await self._with_retry("set", key, value, ex = ex, retries = retries, delay = delay)
         
-        if self.websocket_client is not None:
+        if result is not False and self.websocket_client is not None:
             
             redis_event = await self.callback(key, ex)
             
@@ -301,7 +332,7 @@ class AsyncRedisClient(LoggerMixin):
         method_name, 
         *args, 
         retries = 3, 
-        delay = 2, 
+        delay = 1, 
         **kwargs
         ):
         
@@ -315,15 +346,91 @@ class AsyncRedisClient(LoggerMixin):
                 
                 method = getattr(self.client, method_name)
                 
-                self.log.debug("Redis '%s' attempt %s with args = %s, kwargs = %s" % (
-                    method_name, 
-                    str(attempt), 
-                    str(self.make_readable_cache_log(args)), 
-                    str(kwargs)
+                if isinstance(method, types.MethodType):
+                    
+                    self.log.debug("Redis '%s' attempt %s with args = %s, kwargs = %s" % (
+                        method_name, 
+                        str(attempt), 
+                        str(self.make_readable_cache_log(args)), 
+                        str(kwargs)
+                        )
                     )
-                )
-                
-                return await method(*args, **kwargs)
+                    
+                    function_name = method.__name__
+                    
+                    if function_name in ["set", "delete"]:
+   
+                        lock_key = f"lock:{args[0]}"
+                        lock_token = self._make_lock_token()
+    
+                        last_log = time.monotonic()
+                        first_wait = True
+
+                        while True:
+                            
+                            lock_acquired = await self.client.set(
+                                lock_key, 
+                                lock_token, 
+                                ex = 10, 
+                                nx = True
+                            )
+                                                        
+                            if lock_acquired == True:
+                                
+                                self.log.debug("Acquired lock for key %s (lock key: '%s') performing %s operation -> Lock begin" % (
+                                    str(self.make_readable_cache_log(args)), 
+                                    lock_key,
+                                    function_name
+                                ))
+                                
+                                try: 
+                                    
+                                    filtered_kwargs = dict(kwargs)
+                                    
+                                    if function_name == "set" and "nx" in filtered_kwargs:
+                                        filtered_kwargs["nx"] = True
+                                        
+                                    else:
+                                        filtered_kwargs.pop("nx", None)
+                                    
+                                    return await method(*args, **filtered_kwargs)
+                                
+                                except Exception as e:
+                                    
+                                    self.log.exception("Exception in handle_racing_condition: %s" % str(e))
+                                    raise
+                                
+                                finally:
+                                    
+                                    released = await self._release_owned_lock(
+                                        lock_key, lock_token
+                                    )
+ 
+                                    self.log.info("Released lock for key %s (lock key: '%s' released=%s) -> Lock end" % (
+                                        str(self.make_readable_cache_log(args)), 
+                                        lock_key,
+                                        str(released)
+                                    ))
+                                    
+                            else:
+                                
+                                now = time.monotonic()
+                                
+                                if first_wait == True or now - last_log >= 5:
+                                    
+                                    self.log.debug("Waiting for lock on key %s (lock key: '%s') to be released -> Lock wait" % (
+                                        str(self.make_readable_cache_log(args)), 
+                                        lock_key
+                                    ))
+                                    
+                                    last_log = now
+                                    first_wait = False
+                                
+                                await asyncio.sleep(0.1)
+
+                    else:     
+                           
+                        return await method(*args, **kwargs)
 
             except (RedisConnectionError, ConnectionResetError) as e:
                 
@@ -344,7 +451,9 @@ class AsyncRedisClient(LoggerMixin):
 
                 await self.reconnect()
                 
-                await asyncio.sleep(delay)
+                backoff = min(delay * (2 ** (attempt - 1)), 30)
+                
+                await asyncio.sleep(backoff)
 
             except Exception as e:
                 

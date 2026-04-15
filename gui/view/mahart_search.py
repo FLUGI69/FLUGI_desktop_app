@@ -1,4 +1,5 @@
-﻿from functools import partial
+import asyncio
+from functools import partial
 from qasync import asyncSlot
 import logging
 import typing as t
@@ -45,7 +46,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
         super().__init__()
 
         self.spinner = main_window.app.spinner
-        
+
         self.mahart_ports_table = MahartPortsTable()
         
         self.select_boat_modal = SelectBoatModal(self)
@@ -83,7 +84,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
         
         self.input_field = SearchLineEdit(btn_callback = self.__on_btn_clicked)
         self.input_field.setObjectName("BoatSearchInput")
-        self.input_field.setPlaceholderText("Search...")
+        self.input_field.setPlaceholderText("Keresés...")
         self.input_field.setFixedHeight(35)
         self.input_field.setMaximumWidth(380)
 
@@ -92,14 +93,14 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
         self.error_label.setVisible(False) 
         self.error_label.setMaximumWidth(380)
 
-        search_btn = QPushButton("Search")
+        search_btn = QPushButton("Keresés")
         search_btn.setObjectName("BoatSearchBtn")
         search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         search_btn.setFixedHeight(35)
         search_btn.setMaximumWidth(380)
         search_btn.clicked.connect(partial(self.__on_btn_clicked, 0))
         
-        add_btn = QPushButton("Add")
+        add_btn = QPushButton("Hozzáadás")
         add_btn.setObjectName("BoatSearchBtn")
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_btn.setFixedHeight(35)
@@ -140,7 +141,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
     #     self.results_table.clearContents()
     #     self.results_table.setRowCount(0)
 
-    #     headers = ["Name", "Port", "Arrival", "Pontoon", "Departure"]
+    #     headers = ["Név", "Kikötő", "Érkezés", "Ponton", "Távozás"]
     #     self.results_table.setColumnCount(len(headers))
     #     self.results_table.setHorizontalHeaderLabels(headers)
 
@@ -208,7 +209,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             if idx == 1:
                 
                 self.mahart_ports_table.uncheck_all()
-           
+            
             self.spinner.hide()
 
     async def __search_mahart(self) -> list[ShipInfo]:
@@ -229,7 +230,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             
             self.log.warning("[MAHART] Empty search input provided, skipping search")
             
-            self.error_labels[0].setText("Search field cannot be empty")
+            self.error_labels[0].setText("Kereső mező nem lehet üres")
             self.error_labels[0].setVisible(True)
             
             self.spinner.hide()
@@ -240,7 +241,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             
             self.log.warning("[MAHART] Search input is too short, skipping search")
             
-            self.error_labels[0].setText("(%s) Too short for search" % (str(input_name)))
+            self.error_labels[0].setText("(%s) Túl rövid a kereséshez" % (str(input_name)))
             self.error_labels[0].setVisible(True)
             
             self.spinner.hide()
@@ -255,7 +256,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
 
         #     self.log.warning("[MAHART] No matching ship found for %s" % (str(input_name)))
             
-        #     self.error_labels[idx].setText("(%s) Ship not found with this name" % (str(input_name)))
+        #     self.error_labels[idx].setText("(%s) Nem található hajó ezen a néven" % (str(input_name)))
         #     self.error_labels[idx].setVisible(True)
             
         #     Spinner.hide()
@@ -273,7 +274,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             
             self.log.error("Search failed: %s" % str(e))
             
-            self.error_labels[0].setText("An error occurred during search")
+            self.error_labels[0].setText("Hiba történt a keresés közben")
             self.error_labels[0].setVisible(True)
             
             self.spinner.hide()
@@ -284,7 +285,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             
             self.log.warning("[MAHART] No matching ship found for %s" % (str(input_name)))
             
-            self.error_labels[0].setText("(%s) Ship not found with this name" % (str(input_name)))
+            self.error_labels[0].setText("(%s) Nem található hajó ezen a néven" % (str(input_name)))
             self.error_labels[0].setVisible(True)
             
             self.spinner.hide()
@@ -305,7 +306,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             
             self.log.warning("No boat selected for adding")
             
-            self.error_labels[0].setText("You did not select a ship to add")
+            self.error_labels[0].setText("Nem választottál ki hajót a hozzáadáshoz")
             self.error_labels[0].setVisible(True)
             
             self.spinner.hide()
@@ -348,11 +349,11 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
                     if isinstance(selected_boat, SelectedBoatData):
                         
                         confirm_text_lines = [
-                            f"{selected_boat.name.capitalize()} -> Arrival: {row.arrival_date} Pontoon: {row.ponton} Departure: {row.departure_date}" for row in selected_list
+                            f"{selected_boat.name.capitalize()} -> Érkezés: {row.arrival_date} Ponton: {row.ponton} Távozás: {row.departure_date}" for row in selected_list
                         ]
                         
                         confirm_text = (
-                            "Add schedule:\n\n"
+                            "Menetrend hozzáadás:\n\n"
                             + "\n".join(confirm_text_lines)
                             + "\n\nBiztosan folytatod?"
                         )
@@ -374,7 +375,7 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             
             self.log.info("No records found in the database")
                 
-            self.error_labels[0].setText("No result found in the database")
+            self.error_labels[0].setText("Nem található eredmény az adatbázisban")
             self.error_labels[0].setVisible(True)  
                 
     async def __add_data_from_mahart(self, selected_boat_data: SelectedBoatData, ship_schedule_data: list[ShipInfo],):
@@ -389,16 +390,16 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
             schedule_str
             )
         )
-        
-        for row in ship_schedule_data:
-            
-            await queries.insert_boat_schedule(
-                boat_id = selected_boat_data.boat_id,
-                location = row.port,
-                arrived_date = row.arrival_date,
-                ponton = row.ponton,
-                leave_date = row.departure_date
-            )
+
+        await queries.insert_boat_schedule(
+            boat_id = selected_boat_data.boat_id,
+            schedules = [{
+                "location": row.port,
+                "arrived_date": row.arrival_date,
+                "ponton": row.ponton,
+                "leave_date": row.departure_date
+            } for row in ship_schedule_data]
+        )
 
         self.refresh_todo.emit(True)
         
@@ -415,4 +416,3 @@ class MahartPortsSearchView(QWidget, LoggerMixin):
         self.stack.setCurrentIndex(index)
         
         self.results_table = new_view
-

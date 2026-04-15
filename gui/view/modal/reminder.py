@@ -34,7 +34,7 @@ class ReminderModal(QDialog, LoggerMixin):
         
         self.utility_calculator: UtilityCalculator | None = None
         
-        self.setWindowTitle("Note and reminder")
+        self.setWindowTitle("Jegyzet és emlékeztető")
         
         self.setModal(True)
         
@@ -47,15 +47,17 @@ class ReminderModal(QDialog, LoggerMixin):
     def __init_modal(self):
         
         self.setObjectName("ConfirmModal")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.note_edit = QTextEdit()
+        self.note_edit.setAcceptRichText(False)
         self.note_edit.setObjectName("TranslateInputField")
         self.note_edit.textChanged.connect(self.__on_fields_changed)
         
         self.layout = QVBoxLayout(self) 
         self.layout.addWidget(QLabel("Jegyzet:"))
         self.layout.addWidget(self.note_edit)
-        self.layout.addWidget(QLabel("Reminder time:"))
+        self.layout.addWidget(QLabel("Emlékeztető időpont:"))
 
         self.time_edit = QTimeEdit()
         self.time_edit.setObjectName("time_edit")
@@ -159,7 +161,7 @@ class ReminderModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -175,7 +177,7 @@ class ReminderModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

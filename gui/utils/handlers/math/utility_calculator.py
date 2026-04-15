@@ -333,6 +333,9 @@ class UtilityCalculator(LoggerMixin):
         ValueError
             If one or both currency codes are missing from the current MNB exchange rates.
         """
+        # print("Available currencies:", self.available_currencies)
+        # print(value, from_currency, to_currency)
+        
         if (from_currency and to_currency != "") and \
             (from_currency in self.available_currencies or to_currency in self.available_currencies):
             

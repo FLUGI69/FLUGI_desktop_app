@@ -1,4 +1,4 @@
-﻿import os
+import os
 import logging
 import asyncio
 import typing as t
@@ -88,7 +88,7 @@ class LoginHistoryContent(QWidget, LoggerMixin):
         
         title_row = QHBoxLayout()
 
-        title = QLabel("Current device")
+        title = QLabel("Aktuális eszköz")
         title.setObjectName("BoatTitleLabel")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFixedHeight(40)
@@ -116,10 +116,10 @@ class LoginHistoryContent(QWidget, LoggerMixin):
         self.input_field = QLineEdit()
         self.input_field.setObjectName("BoatSearchInput")
         self.input_field.setFixedHeight(35)
-        self.input_field.setPlaceholderText("Enter new username...")
+        self.input_field.setPlaceholderText("Új felhasználónév megadása...")
         self.input_field.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        modify_button = QPushButton("Edit")
+        modify_button = QPushButton("Módosítás")
         modify_button.setObjectName("BoatSearchBtn")
         modify_button.setFixedHeight(35)
         modify_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -213,7 +213,7 @@ class LoginHistoryContent(QWidget, LoggerMixin):
                 # print(self.login_history)
                 
                 topbar_values = [
-                    query_results.username if query_results.username is not None else "No name",
+                    query_results.username if query_results.username is not None else "Nincs név",
                     query_results.device_name,
                     query_results.os,
                     query_results.ip_address
@@ -241,8 +241,8 @@ class LoginHistoryContent(QWidget, LoggerMixin):
             self.login_history_list.setUniformItemSizes(True)
             
             font = QFont()
-            
             font.setPointSize(10)
+            font.setBold(True)
             
             for login in login_history:
                 
@@ -314,7 +314,7 @@ class LoginHistoryContent(QWidget, LoggerMixin):
                 trash_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 trash_btn.setIcon(LoginHistoryContent.icon("trash.svg"))
                 trash_btn.setIconSize(QSize(20, 20))
-                trash_btn.setToolTip("Delete")
+                trash_btn.setToolTip("Törlés")
                 
                 trash_btn.clicked.connect(lambda _, item = list_item: self.on_delete_clicked(item))
                 
@@ -342,11 +342,11 @@ class LoginHistoryContent(QWidget, LoggerMixin):
                 
                 container.setLayout(h_layout)
                 
-                list_item.setSizeHint(container.sizeHint())
+                list_item.setSizeHint(QSize(container.sizeHint().width(), 35))
                 
                 self.login_history_list.addItem(list_item)
                 self.login_history_list.setItemWidget(list_item, container)
-                self.login_history_list.setSpacing(2)
+                self.login_history_list.setSpacing(0)
                 
                 list_item.setData(Qt.ItemDataRole.UserRole, login)
                 
@@ -355,4 +355,3 @@ class LoginHistoryContent(QWidget, LoggerMixin):
         
         login_history: LoginHistory = list_item.data(Qt.ItemDataRole.UserRole)
         print(login_history)
-

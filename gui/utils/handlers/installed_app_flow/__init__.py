@@ -1,1 +1,1 @@
-from .installed_app_flow import ExampleAppFlow
+from .installed_app_flow import FlugiAppFlow

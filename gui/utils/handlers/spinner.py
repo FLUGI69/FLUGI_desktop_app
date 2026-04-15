@@ -99,10 +99,10 @@ class Spinner(QWidget, LoggerMixin):
             self.log.info("Spinner movie is currently running, stopping it before restart")
             
             self._movie.stop()
-        
-        self.log.info("Spinner movie -> START")
-        
+
         self._movie.start()
+        
+        self.log.info("Spinner movie -> Start")
         
         gif_size = self._movie.currentImage().size()
         
@@ -149,10 +149,10 @@ class Spinner(QWidget, LoggerMixin):
             if self._label is not None:
                 
                 if self._movie.state() == QMovie.MovieState.Running:
-                    
-                    self.log.info("Spinner movie -> STOP")
-                    
+
                     self._movie.stop()
+                    
+                    self.log.info("Spinner movie -> Stop")
 
                 self._label.hide()
                 

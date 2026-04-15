@@ -35,7 +35,7 @@ class ShowImagesModal(QDialog, LoggerMixin):
         
         self._future = None
         
-        self.setWindowTitle("Attached images")
+        self.setWindowTitle("Csatolt képek")
         
         self.setModal(True)
         
@@ -48,8 +48,9 @@ class ShowImagesModal(QDialog, LoggerMixin):
     def __init_modal(self):
         
         self.setObjectName("ConfirmModal")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.message_label = QLabel("Select a work to view images:")
+        self.message_label = QLabel("Válaszd ki a munkát a képek megtekintéséhez:")
         self.message_label.setObjectName("ConfirmModalLabel")
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
  
@@ -99,7 +100,7 @@ class ShowImagesModal(QDialog, LoggerMixin):
         section_layout = QVBoxLayout()
         section_layout.setSpacing(10)
 
-        label = QLabel("Attached images")
+        label = QLabel("Csatolt képek")
         label.setObjectName("BoatTitleLabel")
         
         section_layout.addWidget(label)
@@ -157,7 +158,7 @@ class ShowImagesModal(QDialog, LoggerMixin):
                 layout = QVBoxLayout(placeholder_widget)
                 layout.setContentsMargins(0, 0, 0, 0)
                 
-                label = QLabel("No image attached to this work")
+                label = QLabel("Nincs kép csatolva a munkához")
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 label.setStyleSheet(Config.styleSheets.label)
                 
@@ -201,7 +202,7 @@ class ShowImagesModal(QDialog, LoggerMixin):
 
         for work in works:
             
-            display_text = f"Lead: {work.leader} | Description: {work.description}"
+            display_text = f"Vezető: {work.leader} | Leírás: {work.description}"
             
             self.combo_box.addItem(display_text, work)
     
@@ -221,7 +222,7 @@ class ShowImagesModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             

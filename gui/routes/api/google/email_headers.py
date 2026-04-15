@@ -71,9 +71,12 @@ class EmailHeadersView(GmailApiView):
             
             batch_parsed = self.parse_response(results)
             
-            parsed_results.extend(batch_parsed)  # All batches
+            parsed_results.extend(batch_parsed)  # Összes batch
 
-        self.log.debug("[EmailHeaders] response: %s" % parsed_results)
+        self.log.debug("[EmailHeaders] response: count=%s, first_10=%s" % (
+            len(parsed_results),
+            [{"id": h.id, "subject": h.subject, "sender": h.sender} for h in parsed_results[:10]]
+        ))
         
         return parsed_results
     

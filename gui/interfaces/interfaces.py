@@ -101,7 +101,7 @@ class Interfaces(LoggerMixin):
         icon_path = base_path / "gui/static/assets/img/svg/cts_logo.svg"
         
         qt_app.app.setWindowIcon(QIcon(str(icon_path)))
-        
+            
         return qt_app 
     
     @classmethod
@@ -121,7 +121,7 @@ class Interfaces(LoggerMixin):
 
         lines.append("")
         lines.append("=" * width)
-        lines.append(cls._center("Example - application information", width))
+        lines.append(cls._center("FLUGI - application information", width))
         lines.append("-" * width)
 
         for key, value in info.items():

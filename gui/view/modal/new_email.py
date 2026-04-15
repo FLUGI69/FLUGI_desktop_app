@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import asyncio
 from qasync import asyncSlot
 import os
@@ -60,7 +60,7 @@ class NewEmailModal(QDialog, LoggerMixin):
     
     def __init_modal(self):
         
-        self.setWindowTitle("Send new email")
+        self.setWindowTitle("Új levél küldése")
         
         self.resize(600, 500)
 
@@ -68,19 +68,19 @@ class NewEmailModal(QDialog, LoggerMixin):
 
         header_layout = QHBoxLayout()
         
-        self.translation_label = QLabel("Translation:")
+        self.translation_label = QLabel("Fordítás:")
         self.language_dropdown = QComboBox()
         self.language_dropdown.addItem("")
         self.language_dropdown.addItems([
             "Angol", 
-            "German", 
-            "Romanian", 
+            "Német", 
+            "Román", 
             "Szerb", 
             "Francia", 
             "Spanyol", 
             "Olasz", 
             "Lengyel", 
-            "Slovak", 
+            "Szlovák", 
             "Magyar"
         ])
         self.language_dropdown.currentIndexChanged.connect(self.on_language_selected)
@@ -90,7 +90,7 @@ class NewEmailModal(QDialog, LoggerMixin):
         self.attach_button.setIcon(NewEmailModal.icon("attach_email.svg"))
         self.attach_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.attach_button.setIconSize(QSize(25, 25))
-        self.attach_button.setToolTip("Attach file")
+        self.attach_button.setToolTip("File csatolás")
         self.attach_button.clicked.connect(self.__on_file_button_clicked)
 
         header_layout.addStretch()
@@ -100,19 +100,20 @@ class NewEmailModal(QDialog, LoggerMixin):
 
         main_layout.addLayout(header_layout)
 
-        self.label_to_input = QLabel("Recipient:")
+        self.label_to_input = QLabel("Címzett:")
         self.to_input = QLineEdit()
         self.to_input.setObjectName("input_unit")
         self.to_input.setPlaceholderText("example@email.com")
         self.to_input.setFixedHeight(35)
 
-        self.label_subject_input = QLabel("Subject:")
+        self.label_subject_input = QLabel("Tárgy:")
         self.subject_input = QLineEdit()
         self.subject_input.setObjectName("input_unit")
         self.subject_input.setFixedHeight(35)
 
-        self.label_body_input = QLabel("Message:")
+        self.label_body_input = QLabel("Üzenet:")
         self.body_input = QTextEdit()
+        self.body_input.setAcceptRichText(False)
         self.body_input.setObjectName("TranslateInputField")
         self.body_input.setMinimumHeight(70)
 
@@ -145,11 +146,11 @@ class NewEmailModal(QDialog, LoggerMixin):
 
             if role == QDialogButtonBox.ButtonRole.AcceptRole:
                 
-                button.setText("Send")
+                button.setText("Küldés")
                 
             elif role == QDialogButtonBox.ButtonRole.RejectRole:
                 
-                button.setText("Delete")
+                button.setText("Törlés")
 
         self.button_container.accepted.connect(self.on_send_clicked)
         self.button_container.rejected.connect(self.reject)
@@ -206,7 +207,7 @@ class NewEmailModal(QDialog, LoggerMixin):
         
     def __on_file_button_clicked(self):
     
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select file")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Fájl kiválasztása")
 
         if file_path:
             
@@ -231,7 +232,7 @@ class NewEmailModal(QDialog, LoggerMixin):
         
         if to_email is None:
             
-            self.to_error_label.setText("Email address is required")
+            self.to_error_label.setText("E-mail cím megadása kötelező")
             self.to_error_label.setVisible(True)
             
             self.log.warning("Email address is required")
@@ -240,7 +241,7 @@ class NewEmailModal(QDialog, LoggerMixin):
             
         elif self.is_valid_email(to_email) == False:
             
-            self.to_error_label.setText("Invalid email address format")
+            self.to_error_label.setText("Érvénytelen e-mail cím formátum")
             self.to_error_label.setVisible(True)
             
             self.log.warning("Invalid email address format")
@@ -249,7 +250,7 @@ class NewEmailModal(QDialog, LoggerMixin):
 
         if subject is None:
             
-            self.subject_error_label.setText("Subject is required")
+            self.subject_error_label.setText("Tárgy megadása kötelező")
             self.subject_error_label.setVisible(True)
             
             self.log.warning("Subject is required")
@@ -258,7 +259,7 @@ class NewEmailModal(QDialog, LoggerMixin):
 
         if body is None:
             
-            self.body_error_label.setText("Message is required")
+            self.body_error_label.setText("Üzenet megadása kötelező")
             self.body_error_label.setVisible(True)
             
             self.log.warning("Body is required")
@@ -308,7 +309,7 @@ class NewEmailModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -324,7 +325,7 @@ class NewEmailModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -362,4 +363,3 @@ class NewEmailModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

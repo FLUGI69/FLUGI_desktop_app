@@ -38,7 +38,7 @@ class ReminderAlertModal(QDialog, LoggerMixin):
         
     def __init_modal(self):    
         
-        self.setWindowTitle("Reminder")
+        self.setWindowTitle("Emlékeztető")
         self.setMinimumSize(300, 200)
 
         self.main_layout = QVBoxLayout(self)
@@ -80,7 +80,7 @@ class ReminderAlertModal(QDialog, LoggerMixin):
         self.button_container.setFixedHeight(60)
 
         self.save_button = self.button_container.button(QDialogButtonBox.StandardButton.Ok)
-        self.save_button.setText("Stop")
+        self.save_button.setText("Leállítás")
         self.save_button.setFixedHeight(35)
         self.save_button.setFixedWidth(90)
         self.save_button.setObjectName("ConfirmModalButton")
@@ -138,7 +138,7 @@ class ReminderAlertModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -154,7 +154,7 @@ class ReminderAlertModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

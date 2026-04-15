@@ -21,7 +21,7 @@ class RentalWorker(QObject, LoggerMixin):
 
     def __init__(self, 
         redis_client: AsyncRedisClient, 
-        app_lock: asyncio.Lock,
+        rental_lock: asyncio.Lock,
         utility_calculator: UtilityCalculator,
         interval_ms = 5000
         ):
@@ -40,13 +40,16 @@ class RentalWorker(QObject, LoggerMixin):
         
         self.interval = interval_ms / 1000
         
-        self.rental_history_cache = RentalHistoryCacheService(redis_client)
-    
-        self._lock = app_lock
+        self.rental_history_cache = RentalHistoryCacheService(
+            redis_client = redis_client,
+            rental_lock = rental_lock
+        )
         
         self.rental_history_cache_data = None
         
         self.clear_cache = False
+        
+        self._wake_event = asyncio.Event()
     
     @property
     def cache_needs_refresh(self) -> bool:
@@ -61,15 +64,11 @@ class RentalWorker(QObject, LoggerMixin):
         
         self._running = False
         
-        if self._task and not self._task.done():
+        if self._task and self._task.done() == False:
             
             self._task.cancel()
 
     def notify_cache_update_needed(self, clear_cache):
-
-        self._cache_needs_refresh = True
-        
-        self.rental_history_cache_data = None
         
         if clear_cache == True:
             
@@ -77,9 +76,15 @@ class RentalWorker(QObject, LoggerMixin):
             
             asyncio.create_task(self.rental_history_cache.clear_cache(f"{now.year}-{str(now.month).zfill(2)}"))
 
+        self._cache_needs_refresh = True
+        
+        self.rental_history_cache_data = None
+        
+        self._wake_event.set()
+
     async def _run_loop(self):
         
-        self.log.info("RentalWorker -> START")
+        self.log.info("RentalWorker -> Start")
         
         try:
             
@@ -91,15 +96,13 @@ class RentalWorker(QObject, LoggerMixin):
                 if self.cache_needs_refresh or (self._next_wakeup_time and now >= self._next_wakeup_time):
                     
                     try:
-                        
-                        async with self._lock:
+ 
+                        if self.rental_history_cache_data is None:
                             
-                            if self.rental_history_cache_data is None:
-                                
-                                self.rental_history_cache_data = await self.rental_history_cache.get_rentals_from_cache(
-                                    rentals_cache_id = f"{now.year}-{str(now.month).zfill(2)}",
-                                    exp = Config.redis.cache.rental_history.exp
-                                )
+                            self.rental_history_cache_data = await self.rental_history_cache.get_rentals_from_cache(
+                                rentals_cache_id = f"{now.year}-{str(now.month).zfill(2)}",
+                                exp = Config.redis.cache.rental_history.exp
+                            )
                             
                         next_rental_end_time = None
                         
@@ -134,15 +137,27 @@ class RentalWorker(QObject, LoggerMixin):
                         
                         self._next_wakeup_time = now + timedelta(seconds = 30)
 
-                await asyncio.sleep(1)
+                # Smart sleep: wait until next rental end or cache invalidation
+                sleep_seconds = self.interval
+                
+                if self._next_wakeup_time is not None:
+                    
+                    delta = (self._next_wakeup_time - datetime.now(Config.time.timezone_utc)).total_seconds()
+                    
+                    sleep_seconds = max(1, min(delta, 300))
+                
+                self._wake_event.clear()
+                
+                try:
+                    
+                    await asyncio.wait_for(self._wake_event.wait(), timeout = sleep_seconds)
+                    
+                except asyncio.TimeoutError:
+                    pass
 
         except asyncio.CancelledError:
-            
-            self.log.debug("Rental loop cancelled gracefully")
             raise
         
         finally:
-            
-            self.log.info("RentalWorker -> STOP")
             
             self.finished.emit()

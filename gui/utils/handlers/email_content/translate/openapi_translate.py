@@ -32,8 +32,8 @@ class OpenapiTranslate(LoggerMixin):
                 response = await self.openai.chat.completions.create(
                     model = "gpt-5.1",  
                     messages = [
-                        {"role": "system", "content": f"Translate the user's text accurately into {language}. \
-                            Ensure a precise translation. Return only the translated text, nothing else."},
+                        {"role": "system", "content": f"Fordítsd le a felhasználó szövegét pontosan {language} nyelvre. \
+                            Ügyelj a pontos fordításra. Csak a lefordított szöveget add vissza, semmi mást."},
                         {"role": "user", "content": text}
                     ],
                 )

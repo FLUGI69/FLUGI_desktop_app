@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import typing as t
 
 from PyQt6.QtWidgets import (
@@ -46,17 +46,17 @@ class StorageTable(QTableWidget, LoggerMixin):
         
         self.setHorizontalHeaderLabels([
             "", 
-            "Name", 
-            "Serial number", 
-            "Quantity", 
-            "Unit", 
-            "Manufacturing year", 
-            "Price", 
-            "Commissioning date", 
-            "Purchase source", 
-            "Purchase date",
-            "Inspection dates", 
-            "Scrapezve"
+            "Megnevezés", 
+            "Gyáriszám", 
+            "Mennyiség", 
+            "Mennyiségi egység", 
+            "Gyártási év", 
+            "Ár", 
+            "Üzembe helyezés időpontja", 
+            "Beszerzés forrása", 
+            "Beszerzés időpontja",
+            "Ellenőrző felülvizsgálatok időpontja", 
+            "Selejtezve"
         ])
         
         header = self.horizontalHeader()
@@ -87,62 +87,72 @@ class StorageTable(QTableWidget, LoggerMixin):
         
     def load_data(self, storage_data: AdminStorageItemsCacheData):
         
-        self.log.debug("Preparing to load the following records into the table: %s" % str(storage_data))
+        items = storage_data.items if hasattr(storage_data, "items") else []
         
-        self.clearContents()
+        self.log.debug("Preparing to load %d records into the table (first 10: %s)" % (len(items), str(items[:10])))
         
-        self.setRowCount(0)
-
-        if hasattr(storage_data, "items"):
-
-            for row_index, row in enumerate(storage_data.items):
-                
-                self.insertRow(row_index)
+        self.setUpdatesEnabled(False)
+        
+        try:
+        
+            self.clearContents()
             
-                checkbox = QCheckBox()
-                checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                checkbox.setProperty("check", row)
-                
-                checkbox_widget = QWidget()
-                
-                layout = QHBoxLayout(checkbox_widget)
-                layout.addWidget(checkbox)
-                layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout.setContentsMargins(0, 0, 0, 0)
-                
-                checkbox_widget.setLayout(layout)
-                
-                self.setCellWidget(row_index, 0, checkbox_widget)
-                
-                price_value = getattr(row, "price", None)
-                
-                formatted_price = "{:,.2f}".format(price_value).replace(",", ".") if price_value is not None else "N/A"
+            self.setRowCount(0)
 
-                formatted_quantity = f"{self.datatable_helper.getAttribute(row, "quantity"):.4f}"
+            if len(items) > 0:
                 
-                fields = [
-                    self.datatable_helper.getAttribute(row, "name"),
-                    self.datatable_helper.getAttribute(row, "manufacture_number"),
-                    formatted_quantity,
-                    self.datatable_helper.getAttribute(row, "unit"),
-                    self.datatable_helper.getAttributeDate(row, "manufacture_date"),
-                    formatted_price,
-                    self.datatable_helper.getAttributeDate(row, "commissioning_date"),
-                    self.datatable_helper.getAttribute(row, "purchase_source"),
-                    self.datatable_helper.getAttributeDate(row, "purchase_date"),
-                    self.datatable_helper.getAttributeDate(row, "inspection_date"),
-                    "Yes" if getattr(row, "is_scrap", False) is True else "No" if getattr(row, "is_scrap", False) is False else "N/A",
-                    self.datatable_helper.getAttribute(row, "id", None),
-                    self.datatable_helper.getAttribute(row, "storage_id", None)
-                ]
-     
-                for col_index, value in enumerate(fields, start = 1):
+                self.setRowCount(len(items))
+
+                for row_index, row in enumerate(items):
+                
+                    checkbox = QCheckBox()
+                    checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                    checkbox.setProperty("check", row)
                     
-                    cell = QTableWidgetItem(str(value))
-                    cell.setForeground(Qt.GlobalColor.white)
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    checkbox_widget = QWidget()
                     
-                    self.setItem(row_index, col_index, cell)
+                    layout = QHBoxLayout(checkbox_widget)
+                    layout.addWidget(checkbox)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    checkbox_widget.setLayout(layout)
+                    
+                    self.setCellWidget(row_index, 0, checkbox_widget)
+                    
+                    price_value = getattr(row, "price", None)
+                    
+                    formatted_price = "{:,.2f}".format(price_value).replace(",", ".") if price_value is not None else "N/A"
+
+                    formatted_quantity = f"{self.datatable_helper.getAttribute(row, "quantity"):.4f}"
+                    
+                    fields = [
+                        self.datatable_helper.getAttribute(row, "name"),
+                        self.datatable_helper.getAttribute(row, "manufacture_number"),
+                        formatted_quantity,
+                        self.datatable_helper.getAttribute(row, "unit"),
+                        self.datatable_helper.getAttributeDate(row, "manufacture_date"),
+                        formatted_price,
+                        self.datatable_helper.getAttributeDate(row, "commissioning_date"),
+                        self.datatable_helper.getAttribute(row, "purchase_source"),
+                        self.datatable_helper.getAttributeDate(row, "purchase_date"),
+                        self.datatable_helper.getAttributeDate(row, "inspection_date"),
+                        "Igen" if getattr(row, "is_scrap", False) is True else "Nem" if getattr(row, "is_scrap", False) is False else "N/A",
+                        self.datatable_helper.getAttribute(row, "id", None),
+                        self.datatable_helper.getAttribute(row, "storage_id", None)
+                    ]
+         
+                    for col_index, value in enumerate(fields, start = 1):
+                        
+                        cell = QTableWidgetItem(str(value))
+                        cell.setForeground(Qt.GlobalColor.white)
+                        cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        
+                        self.setItem(row_index, col_index, cell)
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
   
     def get_selected_datatable_items(self) -> list[t.Union[MaterialData, ToolsData, DeviceData]]:
         
@@ -170,4 +180,3 @@ class StorageTable(QTableWidget, LoggerMixin):
         
         return selected_data
                     
-

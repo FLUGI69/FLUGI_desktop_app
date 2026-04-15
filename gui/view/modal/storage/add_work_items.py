@@ -30,7 +30,7 @@ class AddWorkItemsModal(QDialog, LoggerMixin):
         
         self.selected_boat = None
         
-        self.setWindowTitle("Selection")
+        self.setWindowTitle("Választás")
         
         self.setModal(True)
         
@@ -43,8 +43,9 @@ class AddWorkItemsModal(QDialog, LoggerMixin):
     def __init_modal(self):
         
         self.setObjectName("ConfirmModal")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.message_label = QLabel("Select the work you want to attach the part to:")
+        self.message_label = QLabel("Válaszd ki a a munkát amihet csatolni kívánod az alkatrészt:")
         self.message_label.setObjectName("ConfirmModalLabel")
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
  
@@ -88,7 +89,7 @@ class AddWorkItemsModal(QDialog, LoggerMixin):
 
     def set_works(self, works: list[SelectedWorkData]):
         
-        self.log.debug("Setting selected works:%s" % (str(works)))
+        self.log.debug("Setting selected works (len: %d): %s" % (len(works), str(works[:10])))
         
         self.works = works
         
@@ -96,7 +97,7 @@ class AddWorkItemsModal(QDialog, LoggerMixin):
 
         for work in works:
             
-            display_text = f"{work.id} -> (Ship: {work.boat_name}) – {work.description}"
+            display_text = f"{work.id} -> (Hajó: {work.boat_name}) – {work.description}"
             
             self.combo_box.addItem(display_text, work)
 
@@ -127,7 +128,7 @@ class AddWorkItemsModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -143,7 +144,7 @@ class AddWorkItemsModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

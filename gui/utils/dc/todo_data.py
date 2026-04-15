@@ -6,6 +6,7 @@ from .admin.ship_schedule import ShipSchedule
 class BoatWork(DataclassBaseModel):
     id: int
     leader: str
+    order_date: datetime
     description: str | None = None
     start_date: datetime | None = None
     finished_date: datetime | None = None

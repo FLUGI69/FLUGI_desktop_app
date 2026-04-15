@@ -1,3 +1,4 @@
+import logging
 from dataclass import DataclassBaseModel
 import typing as t
 import asyncio
@@ -5,6 +6,7 @@ import threading
 
 from services.backgound_tasks.reminders_checking import ReminderWorker
 from services.backgound_tasks.rentals_checking import RentalWorker
+from services.backgound_tasks.otp_zip_worker import OTPZipWorker
 from db.async_redis import AsyncRedisClient
 from db.db import MySQLDatabase
 from websocket.ws_client import QtApplicationSocketClient
@@ -149,9 +151,10 @@ class RunningTasks(DataclassBaseModel):
 
     async def shutdown(
         self,
-        log: t.Any,
+        log: logging.Logger,
         reminder_worker: t.Optional[ReminderWorker] = None,
         rental_worker: t.Optional[RentalWorker] = None,
+        otp_zip_worker: t.Optional[OTPZipWorker] = None,
         redis_client: t.Optional[AsyncRedisClient] = None,
         playwright_manager: t.Optional[PlayWrightContextManager] = None,
         websocket_client: t.Optional[QtApplicationSocketClient] = None,
@@ -163,7 +166,7 @@ class RunningTasks(DataclassBaseModel):
         try:
             
             log.info("="*80)
-            log.info("Initiating graceful shutdown of all running tasks and resources -> START")
+            log.info("Initiating graceful shutdown of all running tasks and resources -> Start")
             log.info("="*80)
             
             if loop is None:
@@ -225,6 +228,33 @@ class RunningTasks(DataclassBaseModel):
                     except Exception as e:   
               
                         log.exception("Exception while waiting rental worker task: %s" % str(e))
+            
+            if otp_zip_worker is not None:
+                
+                if not hasattr(otp_zip_worker, 'stop') or not callable(otp_zip_worker.stop):
+                  
+                    raise RuntimeError("otp_zip_worker must have a callable 'stop()' method")
+               
+                otp_zip_worker.stop()
+              
+                if not hasattr(otp_zip_worker, "_task"):
+                  
+                    raise RuntimeError("otp_zip_worker missing '_task' attribute")
+                
+                task = otp_zip_worker._task
+               
+                if task is not None:
+                    
+                    try:
+                   
+                        await task
+                  
+                    except asyncio.CancelledError:
+                        pass
+                   
+                    except Exception as e:   
+              
+                        log.exception("Exception while waiting OTP zip worker task: %s" % str(e))
             
             if playwright_manager is not None:
                 

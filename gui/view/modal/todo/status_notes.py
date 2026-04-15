@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 from qasync import asyncSlot
 import typing as t 
@@ -47,8 +47,9 @@ class StatusNotesModal(QDialog, LoggerMixin):
     def __init_modal(self):
         
         self.setObjectName("ConfirmModal")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.message_label = QLabel("Select a work to view notes:")
+        self.message_label = QLabel("Válaszd ki a munkát a jegyzetek megtekintéséhez:")
         self.message_label.setObjectName("ConfirmModalLabel")
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
  
@@ -161,7 +162,7 @@ class StatusNotesModal(QDialog, LoggerMixin):
     
         v_layout = QVBoxLayout()
 
-        label = QLabel("Work process notes")
+        label = QLabel("Munka folyamatának jegyzetei")
         label.setObjectName("BoatTitleLabel")
 
         v_layout.addWidget(label)
@@ -179,7 +180,7 @@ class StatusNotesModal(QDialog, LoggerMixin):
 
         for work in works:
             
-            display_text = f"Lead: {work.leader} | Description: {work.description}"
+            display_text = f"Vezető: {work.leader} | Leírás: {work.description}"
             
             self.combo_box.addItem(display_text, work)
 
@@ -199,7 +200,7 @@ class StatusNotesModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -215,7 +216,7 @@ class StatusNotesModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

@@ -1,4 +1,4 @@
-﻿from PyQt6.QtWidgets import  QFrame, QVBoxLayout, QPushButton
+from PyQt6.QtWidgets import  QFrame, QVBoxLayout, QPushButton
 from PyQt6.QtCore import QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtCore import Qt
 
@@ -15,7 +15,7 @@ class HoverSidebar(QFrame):
         self.setMaximumWidth(self.expanded_width)
         self.resize(self.collapsed_width, self.height())
 
-        self.menu1 = QPushButton("Inbox")
+        self.menu1 = QPushButton("Beérkező levelek")
         self.menu1.setObjectName("DashboardMenuBtn")
         self.menu1.setCursor(Qt.CursorShape.PointingHandCursor)
         
@@ -27,7 +27,7 @@ class HoverSidebar(QFrame):
         self.menu3.setObjectName("DashboardMenuBtn")
         self.menu3.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu4 = QPushButton("Sent")
+        self.menu4 = QPushButton("Elküldött")
         self.menu4.setObjectName("DashboardMenuBtn")
         self.menu4.setCursor(Qt.CursorShape.PointingHandCursor)
         
@@ -43,7 +43,7 @@ class HoverSidebar(QFrame):
         self.menu7.setObjectName("DashboardMenuBtn")
         self.menu7.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu8 = QPushButton("Logout")
+        self.menu8 = QPushButton("Kijelentkezés")
         self.menu8.setObjectName("DashboardMenuBtn")
         self.menu8.setCursor(Qt.CursorShape.PointingHandCursor)
         

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 from PyQt6.QtWidgets import (
     QTableWidget,
@@ -10,18 +10,27 @@ from PyQt6.QtWidgets import (
     QHBoxLayout
 )
 from PyQt6.QtGui import QCursor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from utils.dc.material import MaterialData, MaterialCacheData
+from utils.handlers.math import UtilityCalculator
 from utils.logger import LoggerMixin
+from config import Config
 
 class MaterialsTable(QTableWidget, LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, parent = None):
+    header_clicked = pyqtSignal(int)
+    
+    def __init__(self, 
+        utility_calculator = None, 
+        parent = None
+        ):
         
         super().__init__(parent)
+        
+        self.utility_calculator: UtilityCalculator = utility_calculator
         
         self.__init_table()
         
@@ -35,9 +44,9 @@ class MaterialsTable(QTableWidget, LoggerMixin):
         
         self.verticalHeader().setVisible(False)
         
-        self.setColumnCount(5)
+        self.setColumnCount(8)
         
-        self.setHorizontalHeaderLabels(["", "Name", "Quantity", "Unit", "Price"])
+        self.setHorizontalHeaderLabels(["", "Megnevezés", "Gyáriszám", "Mennyiség", "Mennyiségi egység", "Beszerzés időpontja", "Nettó egységár", "Összesített ár"])
         
         self.setColumnWidth(0, 40)
     
@@ -45,9 +54,17 @@ class MaterialsTable(QTableWidget, LoggerMixin):
         
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         
-        for col in range(1, 5):
+        for col in range(1, self.columnCount()):
             
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            
+            self.setColumnWidth(col, 300)
+        
+        header.setStretchLastSection(False)
+        
+        header.sectionClicked.connect(self.header_clicked.emit)
+        
+        header.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -60,23 +77,30 @@ class MaterialsTable(QTableWidget, LoggerMixin):
               
     def load_data(self, materials_cache: MaterialCacheData):
         
-        self.log.debug("Preparing to load the following material records into the table: %s" % str(materials_cache))
+        items = materials_cache.items if hasattr(materials_cache, "items") else []
         
-        self.clearContents()
+        self.log.debug("Preparing to load %d material records into the table (first 10: %s)" % (len(items), str(items[:10])))
         
-        self.setRowCount(0)
-
-        if hasattr(materials_cache, "items"):
+        self.setUpdatesEnabled(False)
+        
+        try:
+        
+            self.clearContents()
             
-            for row_index, item in enumerate(materials_cache.items):
+            self.setRowCount(0)
+
+            if hasattr(materials_cache, "items"):
                 
-                if item is not None and item.is_deleted == False:
-                    
-                    self.insertRow(row_index)
+
+                visible_items = [item for item in materials_cache.items if item is not None and item.is_deleted == False]
+                
+                self.setRowCount(len(visible_items))
+                
+                for row_index, item in enumerate(visible_items):
 
                     checkbox = QCheckBox()
                     checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                    checkbox.setProperty("material_data", item)  # full item attached 
+                    checkbox.setProperty("material_data", item)
                     
                     checkbox_widget = QWidget()
                     
@@ -89,11 +113,23 @@ class MaterialsTable(QTableWidget, LoggerMixin):
                     
                     self.setCellWidget(row_index, 0, checkbox_widget)
 
+                    if self.utility_calculator and item.price is not None and item.quantity is not None:
+                       
+                        raw_total = float(self.utility_calculator.arithmetic_decimal(item.price, item.quantity, "multiply", 2))
+                        total_price = f"{raw_total:,.2f}".replace(",", ".") + " HUF"
+                    
+                    else:
+                        
+                        total_price = "N/A"
+
                     fields = [
                         item.name if item.name else "N/A",
+                        item.manufacture_number if item.manufacture_number else "N/A",
                         f"{item.quantity:.4f}" if item.quantity is not None else "N/A",
                         item.unit if item.unit else "N/A",
+                        item.purchase_date.strftime(Config.time.timeformat) if item.purchase_date is not None else "N/A",
                         f"{item.price:,.2f}".replace(",", ".") + " HUF" if item.price is not None else "N/A",
+                        total_price,
                         item.id
                     ]
 
@@ -103,6 +139,10 @@ class MaterialsTable(QTableWidget, LoggerMixin):
                         cell.setForeground(Qt.GlobalColor.white)
                         cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.setItem(row_index, col_index, cell)
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
                         
     def get_selected_cache_data(self) -> list[MaterialData]:
         
@@ -129,4 +169,3 @@ class MaterialsTable(QTableWidget, LoggerMixin):
                     self.log.debug("Selected data -> %s" % str(selected_data))
                     
         return selected_data
-

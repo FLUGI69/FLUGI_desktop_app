@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 from sqlalchemy import sql, Column, text, func, select, Enum, Engine, create_engine
 from sqlalchemy import inspect, Inspector
@@ -62,17 +62,17 @@ class MySQLDatabase(LoggerMixin):
       
         if tables is None or tables is object:
             
-            from db.tables import example_db as example_db_tables
+            from db.tables import example_db as Example_tables
             
             class Tables: pass 
         
             tables = Tables()
      
-            for attr_name in dir(example_db_tables):
+            for attr_name in dir(Example_tables):
                 
                 if not attr_name.startswith('_'):
                     
-                    attr = getattr(example_db_tables, attr_name)
+                    attr = getattr(Example_tables, attr_name)
                     
                     if isinstance(attr, type):
                         
@@ -371,7 +371,7 @@ class MySQLDatabase(LoggerMixin):
                             table_object.dialect_options['mysql']._non_defaults['charset'] = self.mysql_charset
                             
                     elif 'mysql' not in table_object.dialect_options:
-                        table_object.dialect_options['mysql'] = sql.base._DialectPricegDict()
+                        table_object.dialect_options['mysql'] = sql.base._DialectArgDict()
 
                         table_object.dialect_options['mysql']._non_defaults['engine'] = self.mysql_engine
 
@@ -408,8 +408,8 @@ class MySQLDatabase(LoggerMixin):
           'users', 
           MetaData(), 
           Column('id', BigInteger(), table=<users>, primary_key=True, nullable=False), 
-          Column('username', VARCHAR(length=250), table=<users>, nullable=False, comment='Username'),
-          Column('password', VARCHAR(length=250), table=<users>, nullable=False, comment='Password'), 
+          Column('username', VARCHAR(length=250), table=<users>, nullable=False, comment='Felhasználónév'),
+          Column('password', VARCHAR(length=250), table=<users>, nullable=False, comment='Jelszó'), 
           schema=None
           ), 
         'type': VARCHAR(length=250), 
@@ -426,7 +426,7 @@ class MySQLDatabase(LoggerMixin):
         'autoincrement': 'auto', 
         'constraints': set(), 
         'foreign_keys': set(), 
-        'comment': 'Password', 
+        'comment': 'Jelszó', 
         'computed': None, 
         'identity': None, 
         'default': None, 
@@ -437,7 +437,7 @@ class MySQLDatabase(LoggerMixin):
         'dispatch': <sqlalchemy.event.base.DDLEventsDispatch object at 0x000001B0B6074D40>, 
         '_proxies': [], 
         'proxy_set': frozenset(
-            {Column('password', VARCHAR(length=250), table=<users>, nullable=False, comment='Password')
+            {Column('password', VARCHAR(length=250), table=<users>, nullable=False, comment='Jelszó')
             })}
         """
         # print(vars(column))
@@ -448,7 +448,7 @@ class MySQLDatabase(LoggerMixin):
                 
                 query = 'ALTER TABLE %s ADD COLUMN %s ' % (str(table_name), str(column.name))
 
-                # ENUM handling
+                # ENUM kezelés
                 if isinstance(column.type, Enum):
                     
                     enum_values = "', '".join(column.type.enums)
@@ -839,7 +839,14 @@ class MySQLDatabase(LoggerMixin):
 
         self.sync_url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{self.__dbName}"
     
-        self.engine = create_engine(self.sync_url, **self.create_engine_extra_kwargs)
+        self.engine = create_engine(
+            self.sync_url,
+            pool_size = 5,
+            max_overflow = 10,
+            pool_pre_ping = True,
+            pool_recycle = 1800,
+            **self.create_engine_extra_kwargs
+        )
         
         self.log.info("Sync engine connected...")
     
@@ -880,7 +887,15 @@ class MySQLDatabase(LoggerMixin):
 
             self.async_url = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{self.__dbName}"
 
-            self.async_engine = create_async_engine(self.async_url, echo = True, **self.async_create_engine_extra_kwargs)
+            self.async_engine = create_async_engine(
+                self.async_url,
+                echo = True,
+                pool_size = 5,
+                max_overflow = 10,
+                pool_pre_ping = True,
+                pool_recycle = 1800,
+                **self.async_create_engine_extra_kwargs
+            )
 
             self.log.info("Async engine connected...")
             

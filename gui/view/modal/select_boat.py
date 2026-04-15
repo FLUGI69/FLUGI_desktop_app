@@ -28,7 +28,7 @@ class SelectBoatModal(QDialog, LoggerMixin):
         
         self.selected_boat = None
         
-        self.setWindowTitle("Selection")
+        self.setWindowTitle("Választás")
         
         self.setModal(True)
         
@@ -41,8 +41,9 @@ class SelectBoatModal(QDialog, LoggerMixin):
     def __init_modal(self):
         
         self.setObjectName("ConfirmModal")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.message_label = QLabel("Select the boat from your fleet you want to add to:")
+        self.message_label = QLabel("Válaszd ki a flottádból a hajót amihez hozzá kívánod adni:")
         self.message_label.setObjectName("ConfirmModalLabel")
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
  
@@ -132,7 +133,7 @@ class SelectBoatModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -148,7 +149,7 @@ class SelectBoatModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

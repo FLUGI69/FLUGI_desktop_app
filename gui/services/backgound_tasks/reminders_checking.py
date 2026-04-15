@@ -22,10 +22,10 @@ class ReminderWorker(QObject, LoggerMixin):
 
     def __init__(self, 
         redis_client: AsyncRedisClient, 
-        app_lock: asyncio.Lock,
         utility_calculator: UtilityCalculator,
+        reminder_lock: asyncio.Lock,
         interval_ms = 5000
-        ):
+        ) -> None:
         
         super().__init__()
         
@@ -41,11 +41,14 @@ class ReminderWorker(QObject, LoggerMixin):
         
         self.interval = interval_ms / 1000
         
-        self.reminder_cache = CalendarReminderCacheService(redis_client)
-    
-        self._lock = app_lock
-        
+        self.reminder_cache = CalendarReminderCacheService(
+            redis_client = redis_client,
+            reminder_lock = reminder_lock
+        )
+
         self.calendar_cache_data = None
+        
+        self._wake_event = asyncio.Event()
     
     @property
     def cache_needs_refresh(self) -> bool:
@@ -60,19 +63,27 @@ class ReminderWorker(QObject, LoggerMixin):
         
         self._running = False
         
-        if self._task and not self._task.done():
+        if self._task and self._task.done() == False:
             
             self._task.cancel()
 
     def notify_cache_update_needed(self, cache_data):
+        
+        if cache_data is None:
+            
+            now = datetime.now(Config.time.timezone_utc)
+            
+            asyncio.create_task(self.reminder_cache.clear_cache(f"{now.year}-{str(now.month).zfill(2)}"))
 
         self._cache_needs_refresh = True
         
         self.calendar_cache_data = cache_data
+        
+        self._wake_event.set()
 
     async def _run_loop(self):
         
-        self.log.info("ReminderWorker -> START")
+        self.log.info("ReminderWorker -> Start")
         
         try:
             
@@ -83,15 +94,13 @@ class ReminderWorker(QObject, LoggerMixin):
                 if self.cache_needs_refresh or (self._next_wakeup_time and now >= self._next_wakeup_time):
                     
                     try:
-                        
-                        async with self._lock:
-                            
-                            if self.calendar_cache_data is None:
-                                
-                                self.calendar_cache_data = await self.reminder_cache.get_reminders_from_cache(
-                                    calendar_cache_id = f"{now.year}-{str(now.month).zfill(2)}",
-                                    exp = Config.redis.cache.reminders.exp
-                                )
+
+                        if self.calendar_cache_data is None:
+
+                            self.calendar_cache_data = await self.reminder_cache.get_reminders_from_cache(
+                                calendar_cache_id = f"{now.year}-{str(now.month).zfill(2)}",
+                                exp = Config.redis.cache.reminders.exp
+                            )
                         
                         next_reminder_time = None
                         
@@ -124,15 +133,27 @@ class ReminderWorker(QObject, LoggerMixin):
                         
                         self._next_wakeup_time = now + timedelta(seconds = 30)
 
-                await asyncio.sleep(1)
+                # Smart sleep: wait until next reminder or cache invalidation
+                sleep_seconds = self.interval
+                
+                if self._next_wakeup_time is not None:
+                    
+                    delta = (self._next_wakeup_time - datetime.now(Config.time.timezone_utc)).total_seconds()
+                    
+                    sleep_seconds = max(1, min(delta, 300))
+                
+                self._wake_event.clear()
+                
+                try:
+                    
+                    await asyncio.wait_for(self._wake_event.wait(), timeout = sleep_seconds)
+                    
+                except asyncio.TimeoutError:
+                    pass
 
         except asyncio.CancelledError:
-            
-            self.log.debug("Reminder loop cancelled gracefully")
             raise
         
         finally:
-            
-            self.log.info("ReminderWorker -> STOP")
             
             self.finished.emit()

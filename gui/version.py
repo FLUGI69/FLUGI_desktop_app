@@ -82,7 +82,7 @@ if getattr(sys, "frozen", False):
     
 else:
     
-    VERSION = (0, 1, 12, 0)
+    VERSION = (0, 2, 8, 2) # (major, minor, patch, build)
     VERSION_STR = "dev"
 
 COMPANY           = "Example Company Ltd."

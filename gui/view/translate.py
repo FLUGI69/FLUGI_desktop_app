@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import os
 from qasync import asyncSlot
 from html import escape
@@ -49,11 +49,12 @@ class TranslateView(QWidget, LoggerMixin):
         self.openai = main_window.app.openai
      
         self.conversation_history = [
-            {"role": "system", "content": "You are the assistant of Example Company Ltd. \
-                You help with daily tasks, especially in topics related to shipping \
-                and the related parts. You are familiar with refrigerants, \
-                as well as their industrial applications. Your answers should be thoughtful, reliable, and \
-                based on information from real sources."}
+            {"role": "system", "content": "Te a Example Company Ltd. asszisztense vagy. \
+                Segítesz a napi feladatok ellátásában, különösen a hajózással kapcsolatos \
+                témákban és az ehhez tartozó alkatrészekkel kapcsolatban. Ismered a hűtőközegeket, \
+                valamint azok ipari alkalmazását. Válaszaid legyenek átgondoltak, megbízható és \
+                valós forrásokon alapuló információkra épüljenek."
+            }
         ]
 
         self.__init_view()
@@ -84,14 +85,14 @@ class TranslateView(QWidget, LoggerMixin):
         self.file_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.file_button.setIcon(self.icon("paperclip.svg")) 
         self.file_button.setFixedSize(200, 100)
-        self.file_button.setIconSize(QSize(28, 28))
+        self.file_button.setIconSize(QSize(25, 25))
         self.file_button.clicked.connect(self.__on_file_button_clicked)
         
         input_layout.addWidget(self.file_button)
 
         self.input_field = ChatTextEdit(btn_callback = self.__btn_callback)
         self.input_field.setObjectName("TranslateInputField")
-        self.input_field.setPlaceholderText("Type your message...")
+        self.input_field.setPlaceholderText("Írd be az üzeneted...")
         self.input_field.setMaximumHeight(100)
         self.input_field.setMaximumWidth(1500)
         
@@ -102,7 +103,7 @@ class TranslateView(QWidget, LoggerMixin):
         self.send_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_button.setIcon(self.icon("anchor.svg"))  
         self.send_button.setFixedSize(200, 100)
-        self.send_button.setIconSize(QSize(28, 28))
+        self.send_button.setIconSize(QSize(25, 25))
         self.send_button.clicked.connect(lambda: asyncio.ensure_future(self.__btn_callback(1)))
         
         input_layout.addWidget(self.send_button)
@@ -117,7 +118,7 @@ class TranslateView(QWidget, LoggerMixin):
             
             self.spinner.show(parent_widget)
         
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select file")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Fájl kiválasztása")
 
         if file_path:
             
@@ -186,10 +187,10 @@ class TranslateView(QWidget, LoggerMixin):
                 response = await self.openai.chat.completions.create(
                     model = "gpt-5.1",  
                     messages = [
-                        {"role": "system", "content": "Analyze the text, highlight the key information, \
-                            and categorize the data in a well-structured tabular JSON format. Respond with only one valid \
-                            JSON object, without any additional explanation or text. \
-                            Translate all textual content of the JSON into Hungarian."},
+                        {"role": "system", "content": "Elemezze a szöveget, emelje ki a kulcsfontosságú információkat, \
+                            és kategorizálja az adatokat jól strukturált JSON táblázatos formátumban. Csak egy érvényes \
+                            JSON objektummal válaszoljon, további magyarázat vagy szöveg nélkül. \
+                            A JSON minden szöveges tartalmát fordítsa le magyarra."},
                         {"role": "user", "content": text}
                     ],
                 )
@@ -236,7 +237,7 @@ class TranslateView(QWidget, LoggerMixin):
             
             self.log.error("Failed to read PDF file: %s" % (str(e)))
             
-            return f"<span style='color:red;'>❌ PDF read error: {e}</span>"
+            return f"<span style='color:red;'>❌ PDF olvasási hiba: {e}</span>"
         
     def __read_text_file(self, file_path):
         
@@ -276,13 +277,13 @@ class TranslateView(QWidget, LoggerMixin):
                 
                 self.log.warning("Unsupported MIME type for preview: %s" % (str(mime_type)))
                 
-                return f"ℹ️ A(z) <b>{os.path.basename(file_path)}</b> file type ({mime_type}) cannot be displayed."
+                return f"ℹ️ A(z) <b>{os.path.basename(file_path)}</b> fájl típusát ({mime_type}) nem tudom megjeleníteni."
         
         else:
             
             self.log.error("Unknown MIME type, cannot preview file: %s" % (str(file_path)))
             
-            return f"❓ Unknown file type: {os.path.basename(file_path)}"
+            return f"❓ Ismeretlen fájltípus: {os.path.basename(file_path)}"
        
     @asyncSlot()    
     async def send_message(self) -> str:
@@ -318,14 +319,14 @@ class TranslateView(QWidget, LoggerMixin):
                 
                 formatted = f"""
                 <div style="margin: 10px 0; padding: 0 10px; max-width: 70%;">
-                    <div style="color:#4285f4; font-weight: bold; text-align: left; margin-bottom: 5px;">👤 You:</div>
+                    <div style="color:#4285f4; font-weight: bold; text-align: left; margin-bottom: 5px;">👤 Te:</div>
                     <div style="text-align: left; white-space: pre-wrap;">
                         {escape(converted_message)}
                     </div>
                 </div>
 
                 <div style="margin: 10px 0; padding: 0 10px; max-width: 70%;">
-                    <div style="color:#4285f4; font-weight: bold; text-align: left; margin-bottom: 5px;">🧠 Example Company GPT:</div>
+                    <div style="color:#4285f4; font-weight: bold; text-align: left; margin-bottom: 5px;">🧠 ExampleCompanyGPT:</div>
                     <div style="text-align: left; white-space: pre-wrap;">
                         {converted_result}
                     </div>
@@ -352,7 +353,7 @@ class TranslateView(QWidget, LoggerMixin):
         text = re.sub(r'## (.+)', r'<h2>\1</h2>', text)
         text = re.sub(r'# (.+)', r'<h1>\1</h1>', text)
 
-        # Bold conversion
+        # Félkövér konvertálás
         text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
 
         return text    

@@ -495,7 +495,7 @@ class Config(object):
         level = "DEBUG"                    
         file_name = "app.log" 
         path = r""                 
-        fmt = "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+        fmt = "%(asctime)s %(process)d %(processName)s %(threadName)s %(levelname)s %(name)s %(module)s.%(funcName)s:%(lineno)d # %(message)s"
         print_level = 15
         
         class filehandler:
@@ -503,6 +503,26 @@ class Config(object):
             maxBytes = 5*1024*1024 
             backupCount = 3       
             encoding = "utf-8"
+            
+    class otp_zip_worker:
+        
+        path = r""
+        passwrd = "password"
+    
+    class sumatra_pdf:
+        
+        version = "3.6.1"
+        url = "https://www.sumatrapdfreader.org/dl/rel/%s/SumatraPDF-%s-64.zip" % (version, version)
+        exe_name = "SumatraPDF-%s-64.exe" % version
+        
+        @staticmethod
+        def base_path():
+            
+            if getattr(sys, "frozen", False):
+                
+                return os.path.join(os.path.dirname(sys.executable), "_internal/gui/sumatra_pdf")
+            
+            return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sumatra_pdf"))
             
     class qr_code:
         
@@ -632,6 +652,13 @@ class Config(object):
         
         class cache:
             
+            lock_release_script = """
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('DEL', KEYS[1])
+            end
+            return 0
+            """
+            
             class material:
                 
                 id = datetime.now().strftime("%y-%m")
@@ -640,15 +667,6 @@ class Config(object):
             class marine_traffic:
                 
                 exp = 3600
-                
-            class admin_boat_info:
-                
-                id = datetime.now().strftime("%y-%m")
-                exp = 3600
-                
-                class single_boat:
-                        
-                    exp = 600
                         
             class reminders:
                 
@@ -688,6 +706,11 @@ class Config(object):
                 
             class rental_history:
                 
+                exp = 3600
+                
+            class fleet:
+                
+                id = datetime.now().strftime("%y-%m")
                 exp = 3600
                 
     class web_scraper:
@@ -733,9 +756,7 @@ class Config(object):
         ] 
         viewports = [(1366,768), (1440,900), (1536,864), (1920,1080)]   
                
-        class overpass:
+        class geocoding:
             
-            urls = [
-                "https://overpass-api.de/api/interpreter",
-                "https://overpass.kumi.systems/api/interpreter",
-            ]
+            nominatim_url = "https://nominatim.openstreetmap.org/reverse"
+            nominatim_address_fields = ["city", "town", "village", "municipality", "county"]

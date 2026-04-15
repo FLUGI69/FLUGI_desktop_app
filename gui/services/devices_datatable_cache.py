@@ -1,6 +1,6 @@
+import asyncio
 import json
 import logging
-import base64
 
 from db.async_redis import AsyncRedisClient
 from utils.dc.device import DeviceData, DeviceCacheData
@@ -10,12 +10,17 @@ from utils.logger import LoggerMixin
 class DevicesCacheService(LoggerMixin):
     
     log: logging.Logger
+
+    KEY_PREFIX = "devices:"
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    def __init__(self, 
+        redis_client: AsyncRedisClient,
+        storage_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "devices:"
+        
+        self.storage_lock = storage_lock
 
     def _make_key(self, devices_cache_id: str) -> str:
         
@@ -43,7 +48,7 @@ class DevicesCacheService(LoggerMixin):
                 
                 if devices_cache_id in decoded_json and "items" in decoded_json[devices_cache_id]:
                     
-                    item_data = self.redis_client.decode_from_cache(decoded_json[devices_cache_id]["items"])
+                    item_data = decoded_json[devices_cache_id]["items"]
                     
                     return DeviceCacheData(
                         items = [DeviceData(**entry) for entry in item_data]
@@ -90,13 +95,14 @@ class DevicesCacheService(LoggerMixin):
                 wrapped = {
                     devices_cache_id: {
                         "items": [
-                            self.redis_client.encode_for_cache(item.model_dump())
+                            item.model_dump(mode = "json")
                             for item in raw_data
                         ]
                     }
                 }
                 
-                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+                async with self.storage_lock:
+                    await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
                 
                 self.log.debug("Devices data cached for %s" % devices_cache_id)
                 
@@ -116,4 +122,5 @@ class DevicesCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.storage_lock:
+            await self.redis_client.clear_cache(key)

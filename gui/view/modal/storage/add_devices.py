@@ -1,11 +1,13 @@
-﻿import asyncio
+import asyncio
 import logging
 import sys, os
 import re
+from typing import cast
 from datetime import datetime
 from qrcode import QRCode
 from qrcode.constants import ERROR_CORRECT_H
-from PIL import Image, ImageDraw
+from PIL import Image
+from PIL.Image import Image as PILImage, Resampling
 from pathlib import Path
 import io
 
@@ -27,6 +29,7 @@ from PyQt6.QtGui import QCursor
 from utils.dc.device import DeviceData
 from utils.enums.storage_item_type_enum import StorageItemTypeEnum
 from utils.logger import LoggerMixin
+from utils.qr_code_logo_helper import load_qr_logo
 from config import Config
 from db import queries
 
@@ -50,7 +53,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         self._future = None
         
-        self.setWindowTitle("Add to inventory")
+        self.setWindowTitle("Készlethez adás")
         
         self.setModal(True)
         
@@ -64,7 +67,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         self.setObjectName("AddDevicesModal")
         
-        self.label_dropdown = QLabel("Storage:")
+        self.label_dropdown = QLabel("Raktár:")
         self.dropdown_select_storage = QComboBox()
         self.dropdown_select_storage.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_select_storage.setFixedHeight(35)
@@ -74,7 +77,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.dropdown_select_storage_error.setObjectName("error")
         self.dropdown_select_storage_error.setVisible(False)
         
-        self.label_name = QLabel("Name:")
+        self.label_name = QLabel("Megnevezés:")
         self.input_name = QLineEdit()
         self.input_name.setObjectName("input_unit")
         self.input_name.setFixedHeight(35)
@@ -83,7 +86,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.input_name_error.setObjectName("error")
         self.input_name_error.setVisible(False)
         
-        self.label_manufacture_number = QLabel("Type / Serial number:")
+        self.label_manufacture_number = QLabel("Típus / Gyáriszám:")
         self.input_manufacture_number = QLineEdit()
         self.input_manufacture_number.setObjectName("input_unit")
         self.input_manufacture_number.setFixedHeight(35)
@@ -92,7 +95,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.input_manufacture_number_error.setObjectName("error")
         self.input_manufacture_number_error.setVisible(False)
         
-        self.label_quantity = QLabel("Quantity:")
+        self.label_quantity = QLabel("Mennyiség:")
         self.input_quantity = QDoubleSpinBox()
         self.input_quantity.setDecimals(4)
         self.input_quantity.setSingleStep(0.01)
@@ -108,7 +111,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         self.min_datetime = QDateTime.currentDateTime()
         
-        self.label_manufacture_date = QLabel("Manufacturing year:")
+        self.label_manufacture_date = QLabel("Gyártási év:")
         self.manufacture_date = QDateTimeEdit()
         self.manufacture_date.setFixedHeight(35)
         self.manufacture_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -120,7 +123,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.manufacture_date_error.setObjectName("error")
         self.manufacture_date_error.setVisible(False)
         
-        self.label_commissioning_date = QLabel("Commissioning date:")
+        self.label_commissioning_date = QLabel("Üzembe helyezés időpontja:")
         self.commissioning_date = QDateTimeEdit()
         self.commissioning_date.setFixedHeight(35)
         self.commissioning_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -132,7 +135,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.commissioning_date_error.setObjectName("error")
         self.commissioning_date_error.setVisible(False)
         
-        self.label_price = QLabel("Net unit price:")
+        self.label_price = QLabel("Netto egységár:")
         self.input_price = QDoubleSpinBox()
         self.input_price.setDecimals(2)
         self.input_price.setSingleStep(0.01)
@@ -146,7 +149,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.input_price_error.setObjectName("error")
         self.input_price_error.setVisible(False)
         
-        self.label_purchase_source = QLabel("Purchased from (company, site, distributor):")
+        self.label_purchase_source = QLabel("Beszerezve (cég, olda, forgalmazó):")
         self.input_purchase_source = QLineEdit()
         self.input_purchase_source.setObjectName("input_unit")
         self.input_purchase_source.setFixedHeight(35)
@@ -155,7 +158,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.input_purchase_source_error.setObjectName("error")
         self.input_purchase_source_error.setVisible(False)
         
-        self.label_purchase_date = QLabel("Purchase date:")
+        self.label_purchase_date = QLabel("Beszerzés időpontja:")
         self.input_purchase_date = QDateTimeEdit()
         self.input_purchase_date.setFixedHeight(35)
         self.input_purchase_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -261,7 +264,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         if purchase_source == "":
 
-            self.input_purchase_source_error.setText("You did not provide a purchase source")
+            self.input_purchase_source_error.setText("Nem adtál meg beszerzési forrást")
             self.input_purchase_source_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'purchase_source' field is empty")
@@ -270,7 +273,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         if price < 1e-2:
 
-            self.input_price_error.setText("Price cannot be negative")
+            self.input_price_error.setText("Az ár nem lehet negatív")
             self.input_price_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'price' field is invalid")
@@ -279,7 +282,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
 
         if storage_id is None:
             
-            self.dropdown_select_storage_error.setText("You did not select a warehouse")
+            self.dropdown_select_storage_error.setText("Nem választottál raktárat")
             self.dropdown_select_storage_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'storage' field is empty")
@@ -288,7 +291,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         if name == "":
             
-            self.input_name_error.setText("Name cannot be empty")
+            self.input_name_error.setText("Megnevezés nem lehet üres")
             self.input_name_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'name' field is empty")
@@ -297,7 +300,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
 
         if manufacture_number == "":
             
-            self.input_manufacture_number_error.setText("Type / Serial number cannot be empty")
+            self.input_manufacture_number_error.setText("Típus / Gyáriszám nem lehet üres")
             self.input_manufacture_number_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'manufacture_number' field is empty")
@@ -306,7 +309,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
 
         if quantity <= 1e-4:
 
-            self.input_quantity_error.setText("Quantity must be at least 1")
+            self.input_quantity_error.setText("A mennyiség legalább 1 kell legyen")
             self.input_quantity_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'quantity' field is invalid")
@@ -315,7 +318,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         if manufacture_date == current_time:
             
-            self.manufacture_date_error.setText("Manufacturing date cannot be exactly the current time")
+            self.manufacture_date_error.setText("Gyártási időpont nem lehet pontosan a jelenlegi időpont")
             self.manufacture_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'manufacture_date' equals current time")
@@ -324,7 +327,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
             
         elif manufacture_date < QDateTime(QDate(2000, 1, 1), QTime(0, 0)):
             
-            self.manufacture_date_error.setText("Manufacturing year must be at least 2000")
+            self.manufacture_date_error.setText("A gyártási év legalább 2000 lehet")
             self.manufacture_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'manufacture_date' field is invalid")
@@ -333,7 +336,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
             
         if purchase_date == current_time:
             
-            self.input_purchase_date_error.setText("Purchase date cannot be exactly the current time")
+            self.input_purchase_date_error.setText("Beszerzés időpontja nem lehet pontosan a jelenlegi időpont")
             self.input_purchase_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'purchase_date' equals current time")
@@ -342,7 +345,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
 
         elif purchase_date < QDateTime(QDate(2000, 1, 1), QTime(0, 0)):
             
-            self.input_purchase_date_error.setText("Purchase year must be at least 2000")
+            self.input_purchase_date_error.setText("A beszerzési év legalább 2000 lehet")
             self.input_purchase_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'purchase_date' field is invalid")
@@ -351,7 +354,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
 
         if commissioning_date == current_time:
             
-            self.commissioning_date_error.setText("Commissioning cannot be exactly the current time")
+            self.commissioning_date_error.setText("Üzembe helyezés nem lehet pontosan a jelenlegi időpont")
             self.commissioning_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'commissioning_date' equals current time")
@@ -360,7 +363,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
             
         if commissioning_date < manufacture_date:
             
-            self.commissioning_date_error.setText("Commissioning cannot be earlier than manufacturing")
+            self.commissioning_date_error.setText("Üzembe helyezés nem lehet korábban, mint a gyártás")
             self.commissioning_date_error.setVisible(True)
            
             self.log.warning("Input validation failed: 'commissioning_date' is earlier than 'manufacture_date'")
@@ -392,89 +395,92 @@ class AddDevicesModal(QDialog, LoggerMixin):
             uuis = None
         )
         
-        possible_row_id = await queries.select_next_possible_row_device_id()
-        
-        data.id = possible_row_id
-        
-        qr_data = {data.id, StorageItemTypeEnum.DEVICE}
-        
-        qr_code = QRCode(
-            version = 1,
-            error_correction = ERROR_CORRECT_H,
-            box_size = 6,
-            border = 4
-        )
-        qr_code.add_data(qr_data)
-        qr_code.make(fit = True)
-        
-        qr_code_img = qr_code.make_image(fill_color = "black", back_color = "white").convert("RGB")
-
-        logo = Image.open(self.logo_path).convert("RGBA")
-
-        qr_width, qr_height = qr_code_img.size
-
-        logo_size = int(qr_width * 0.2)
-        
-        logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
-
-        border_thickness = 4
-        
-        frame_color = (66, 133, 244, 255)
-        bg_color = (255, 255, 255, 255) 
-
-        logo_bg_size = (logo_size + 2 * border_thickness, logo_size + 2 * border_thickness)
-        logo_bg = Image.new("RGBA", logo_bg_size, bg_color)
-
-        draw = ImageDraw.Draw(logo_bg)
-        draw.rectangle(
-            [(0, 0), (logo_bg_size[0] - 1, logo_bg_size[1] - 1)], 
-            outline = frame_color,
-            width = border_thickness
-        )
-
-        logo_bg.paste(logo, (border_thickness, border_thickness), logo)
-
-        pos = (qr_width - logo_bg_size[0] - 24, qr_height - logo_bg_size[1] - 24)
-
-        qr_code_img = qr_code_img.convert("RGBA")
-        qr_code_img.paste(logo_bg, pos, logo_bg)
-        qr_code_img = qr_code_img.convert("RGB")
-
-        if getattr(sys, 'frozen', False):
+        try:
             
-            base_dir = Path(sys.executable).parent / "qr_codes"
-
-        else:
+            possible_row_id = await queries.select_next_possible_row_device_id()
             
-            base_dir = Config.qr_code.path
+            data.id = possible_row_id
             
-        now = datetime.now(Config.time.timezone_utc)
-        year = str(now.year)
-        month = f"{now.month:02}"
+            qr_data = {data.id, StorageItemTypeEnum.DEVICE}
+            
+            qr_code = QRCode(
+                version = 1,
+                error_correction = ERROR_CORRECT_H,
+                box_size = 6,
+                border = 4
+            )
+            qr_code.add_data(qr_data)
+            qr_code.make(fit = True)
+            
+            qr_code_img: PILImage = cast(PILImage, qr_code.make_image(fill_color = "black", back_color = "white").convert("RGB"))
 
-        qr_codes_dir = os.path.join(base_dir, year, month)
-        
-        os.makedirs(qr_codes_dir, exist_ok = True)
-        
-        name = data.name if data.name is not None else "unknown"
-        
-        safe_name = name.lower()
-        safe_name = safe_name.replace(" ", "_")  
-        safe_name = re.sub(r"[^a-z0-9_-]", "_", safe_name)  
-        safe_name = re.sub(r"_+", "_", safe_name)          
-        safe_name = safe_name.strip("_")  
-        
-        file_name = f"berendezes_{possible_row_id}_{safe_name}.png"
-        
-        out_file = os.path.join(qr_codes_dir, file_name)
+            qr_width: int
+            qr_height: int
+            qr_width, qr_height = cast(tuple[int, int], qr_code_img.size)
 
-        qr_code_img.save(out_file)
-        
-        buffer = io.BytesIO()
-        
-        qr_code_img.save(buffer, format = "PNG")
-        
-        data.uuid = buffer.getvalue()
+            border_thickness: int = 4
+            overlay_outer: int = int(min(qr_width, qr_height) * 0.30)
+            inner_max: int = max(1, overlay_outer - (2 * border_thickness))
+
+            logo: PILImage = load_qr_logo(self.logo_path, (inner_max, inner_max))
+
+            logo_width: int
+            logo_height: int
+            logo_width, logo_height = cast(tuple[int, int], logo.size)
+
+            bg_color: tuple[int, int, int, int] = (255, 255, 255, 255)
+
+            logo_bg_size: tuple[int, int] = (logo_width + (2 * border_thickness), logo_height + (2 * border_thickness))
+            logo_bg: PILImage = Image.new("RGBA", logo_bg_size, bg_color)
+
+            logo_bg.paste(logo, (border_thickness, border_thickness), logo)
+
+            pos: tuple[int, int] = ((qr_width - logo_bg_size[0]) // 2, (qr_height - logo_bg_size[1]) // 2)
+
+            qr_code_img = cast(PILImage, qr_code_img.convert("RGBA"))
+            qr_code_img.paste(logo_bg, pos, logo_bg)
+            qr_code_img = cast(PILImage, qr_code_img.convert("RGB"))
+
+            if getattr(sys, 'frozen', False):
+                
+                base_dir = Path(sys.executable).parent / "qr_codes"
+
+            else:
+                
+                base_dir = Config.qr_code.path
+                
+            now = datetime.now(Config.time.timezone_utc)
+            year = str(now.year)
+            month = f"{now.month:02}"
+
+            qr_codes_dir = os.path.join(base_dir, year, month)
+            
+            os.makedirs(qr_codes_dir, exist_ok = True)
+            
+            name = data.name if data.name is not None else "unknown"
+            
+            safe_name = name.lower()
+            safe_name = safe_name.replace(" ", "_")  
+            safe_name = re.sub(r"[^a-z0-9_-]", "_", safe_name)  
+            safe_name = re.sub(r"_+", "_", safe_name)          
+            safe_name = safe_name.strip("_")  
+            
+            file_name = f"berendezes_{possible_row_id}_{safe_name}.png"
+            
+            out_file = os.path.join(qr_codes_dir, file_name)
+
+            qr_code_img.save(out_file)
+            
+            buffer = io.BytesIO()
+            
+            qr_code_img.save(buffer, format = "PNG")
+            
+            data.uuid = buffer.getvalue()
+            
+        except Exception as e:
+            
+            self.log.exception("Error generating QR code or saving file: %s" % str(e))
+            raise
         
         self.log.debug("Form data: %s" % data)
         
@@ -526,7 +532,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -542,7 +548,7 @@ class AddDevicesModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -580,4 +586,3 @@ class AddDevicesModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

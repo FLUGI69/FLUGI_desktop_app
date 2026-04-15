@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import typing as t
 
 from PyQt6.QtWidgets import (
@@ -44,14 +44,14 @@ class TenantsTable(QTableWidget, LoggerMixin):
         
         self.setHorizontalHeaderLabels([
             "", 
-            "Name", 
-            "Tenant name", 
-            "Rental start", 
-            "Rental end", 
+            "Megnevezés", 
+            "Bérlő neve", 
+            "Bérlés kezdete", 
+            "Bérlés vége", 
             "Visszaadva", 
-            "Rental price", 
-            "Pricing type",
-            "Rented quantity"
+            "Bérlés ára", 
+            "Árazás típusa",
+            "Bérelt mennyiség"
         ])
         
         header = self.horizontalHeader()
@@ -79,63 +79,73 @@ class TenantsTable(QTableWidget, LoggerMixin):
         
     def load_data(self, tenant_data: AdminTenantsCacheData):
         
-        self.log.debug("Preparing to load the following records into the table: %s" % str(tenant_data))
+        items = tenant_data.items if hasattr(tenant_data, "items") else []
         
-        self.clearContents()
+        self.log.debug("Preparing to load %d records into the table (first 10: %s)" % (len(items), str(items[:10])))
         
-        self.setRowCount(0)
-
-        if hasattr(tenant_data, "items"):
-  
-            for row_index, row in enumerate(tenant_data.items):
-                
-                self.insertRow(row_index)
+        self.setUpdatesEnabled(False)
+        
+        try:
+        
+            self.clearContents()
             
-                checkbox = QCheckBox()
-                checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                checkbox.setProperty("check", row)
-                
-                checkbox_widget = QWidget()
-                
-                layout = QHBoxLayout(checkbox_widget)
-                layout.addWidget(checkbox)
-                layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout.setContentsMargins(0, 0, 0, 0)
-                
-                checkbox_widget.setLayout(layout)
-                
-                self.setCellWidget(row_index, 0, checkbox_widget)
-                
-                price_value = getattr(row, "rental_price", None)
-                
-                formatted_price = "{:,.2f}".format(price_value).replace(",", ".") if price_value is not None else "N/A"
+            self.setRowCount(0)
 
-                formatted_quantity = f"{self.datatable_helper.getAttribute(row, "quantity"):.4f}"
+            if len(items) > 0:
                 
-                rental_end =  "Nincs megadva" if self.datatable_helper.getAttributeDate(row, "rental_end") == self.datatable_helper.getAttributeDate(row, "rental_start") \
-                    else self.datatable_helper.getAttributeDate(row, "rental_end")
-                
-                fields = [
-                    self.datatable_helper.getAttribute(row, "item_name"),
-                    self.datatable_helper.getAttribute(row, "tenant_name"),
-                    self.datatable_helper.getAttributeDate(row, "rental_start"),
-                    rental_end,
-                    "Yes" if getattr(row, "returned", False) is True else "No" if getattr(row, "returned", False) is False else "N/A",
-                    formatted_price,
-                    "Daily price" if getattr(row, "is_daily_price", True) else "Full period",
-                    formatted_quantity,
-                    self.datatable_helper.getAttribute(row, "item_id", None),
-                    self.datatable_helper.getAttribute(row, "tenant_id", None),
-                ]
+                self.setRowCount(len(items))
+
+                for row_index, row in enumerate(items):
+            
+                    checkbox = QCheckBox()
+                    checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                    checkbox.setProperty("check", row)
+                    
+                    checkbox_widget = QWidget()
+                    
+                    layout = QHBoxLayout(checkbox_widget)
+                    layout.addWidget(checkbox)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    checkbox_widget.setLayout(layout)
+                    
+                    self.setCellWidget(row_index, 0, checkbox_widget)
+                    
+                    price_value = getattr(row, "rental_price", None)
+                    
+                    formatted_price = "{:,.2f}".format(price_value).replace(",", ".") if price_value is not None else "N/A"
+
+                    formatted_quantity = f"{self.datatable_helper.getAttribute(row, "quantity"):.4f}"
+                    
+                    rental_end =  "Nincs megadva" if self.datatable_helper.getAttributeDate(row, "rental_end") == self.datatable_helper.getAttributeDate(row, "rental_start") \
+                        else self.datatable_helper.getAttributeDate(row, "rental_end")
+                    
+                    fields = [
+                        self.datatable_helper.getAttribute(row, "item_name"),
+                        self.datatable_helper.getAttribute(row, "tenant_name"),
+                        self.datatable_helper.getAttributeDate(row, "rental_start"),
+                        rental_end,
+                        "Igen" if getattr(row, "returned", False) is True else "Nem" if getattr(row, "returned", False) is False else "N/A",
+                        formatted_price,
+                        "Napi ár" if getattr(row, "is_daily_price", True) else "Teljes időszak",
+                        formatted_quantity,
+                        self.datatable_helper.getAttribute(row, "item_id", None),
+                        self.datatable_helper.getAttribute(row, "tenant_id", None),
+                    ]
      
-                for col_index, value in enumerate(fields, start = 1):
+                    for col_index, value in enumerate(fields, start = 1):
                     
-                    cell = QTableWidgetItem(str(value))
-                    cell.setForeground(Qt.GlobalColor.white)
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        cell = QTableWidgetItem(str(value))
+                        cell.setForeground(Qt.GlobalColor.white)
+                        cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    self.setItem(row_index, col_index, cell)
+                        self.setItem(row_index, col_index, cell)
         
+        finally:
+            
+            self.setUpdatesEnabled(True)
+
     def get_selected_datatable_items(self) -> list[TenantData]:
         
         selected_data = []

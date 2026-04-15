@@ -14,6 +14,7 @@ class MarineTrafficData(DataclassBaseModel):
     imo: t.Optional[int] = None
     reported_destination: t.Optional[str] = None
     matched_destination: t.Optional[str] = None
+    position_received: t.Optional[str] = None
     
 # class MarineTrafficData(DataclassBaseModel):
 #     ship_name: str

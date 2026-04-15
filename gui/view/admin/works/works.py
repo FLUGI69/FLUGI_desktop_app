@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from functools import partial
 from qasync import asyncSlot
 from datetime import datetime
@@ -58,18 +58,20 @@ class AdminWorksContent(QWidget, LoggerMixin):
         if admin_view.main_window.storage_view is not None:
             
             self.storage_view = admin_view.main_window.storage_view
-            
-            self.storage_lock = admin_view.main_window.storage_view.storage_lock
+
             self.material_cache_service = admin_view.main_window.storage_view.material_cache_service
             
         else:
             
             self.storage_view = admin_view.main_window.get_storage_view()
  
-            self.storage_lock = self.storage_view.storage_lock
             self.material_cache_service = self.storage_view.material_cache_service
         
         self.spinner = admin_view.main_window.app.spinner
+        
+        self.openai = admin_view.main_window.app.openai
+        
+        self.openapi_lock = admin_view.main_window.app.openapi_lock
         
         self.previous_add_text = ""
         
@@ -161,7 +163,7 @@ class AdminWorksContent(QWidget, LoggerMixin):
             
             self.add_work_widget._recalculate_widths = True
             self.edit_work_widget._recalculate_widths = True
-        
+       
         await self.storage_view.load_cache_data(
             cache_id = Config.redis.cache.material.id,
             exp = Config.redis.cache.material.exp
@@ -176,13 +178,13 @@ class AdminWorksContent(QWidget, LoggerMixin):
         self.tab_bar.setElideMode(Qt.TextElideMode.ElideNone) 
         self.tab_bar.setFixedHeight(50)
         self.tab_bar.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-        self.tab_bar.addTab("Add work")      
-        self.tab_bar.addTab("Edit works")     
+        self.tab_bar.addTab("Munka hozzáadás")      
+        self.tab_bar.addTab("Munkák módosítása")     
         self.tab_bar.setCurrentIndex(0) 
         self.tab_bar.currentChanged.connect(lambda index, tab_bar = self.tab_bar: self._handle_selected_tab(tab_bar, index))
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search...")
+        self.search_input.setPlaceholderText("Keresés...")
         self.search_input.setObjectName("WarehouseSearchInput")
         self.search_input.returnPressed.connect(self._handle_enter_pressed)
         
@@ -207,11 +209,11 @@ class AdminWorksContent(QWidget, LoggerMixin):
         
         tab_text = tab_bar.tabText(idx)
         
-        if tab_text == "Add work":
+        if tab_text == "Munka hozzáadás":
             
             self.__set_content(self.add_work_widget)
             
-        elif tab_text == "Edit works":
+        elif tab_text == "Munkák módosítása":
             
             self.__set_content(self.edit_work_widget)
     
@@ -252,7 +254,8 @@ class AdminWorksContent(QWidget, LoggerMixin):
                         ) for row in query_result
                     ]
                     
-                    self.results_widget.table.load_data(result)
+                    if self.results_widget is not None and isinstance(self.results_widget, AdminAddWorkContent):
+                        self.results_widget.table.load_data(result)
                 
                 elif query_result == []:
                     
@@ -260,7 +263,7 @@ class AdminWorksContent(QWidget, LoggerMixin):
                     
                     self.search_error_label.setVisible(True)
                     
-                    self.search_error_label.setText("No displayable data '%s' related to" % text)
+                    self.search_error_label.setText("Nincs megjeleníthető adat '%s' kapcsolódóan" % text)
         
         elif isinstance(self.results_widget, AdminEditWorkContent):
             
@@ -288,6 +291,7 @@ class AdminWorksContent(QWidget, LoggerMixin):
                     result = [AdminEditWorkData(
                         work_id = row.id,
                         leader = row.leader,
+                        order_date = row.order_date,
                         description = row.description if row.description is not None else None,
                         start_date = row.start_date if row.start_date is not None else None,
                         finished_date = row.finished_date if row.finished_date is not None else None,
@@ -325,8 +329,9 @@ class AdminWorksContent(QWidget, LoggerMixin):
                             ] if len(row.status.notes) > 0 else []
                         ) if row.transfered == True and row.status is not None else None,
                     ) for row in query_result]
-                        
-                    self.results_widget.table.load_data(result)
+                    
+                    if self.results_widget is not None and isinstance(self.results_widget, AdminEditWorkContent):    
+                        self.results_widget.table.load_data(result)
                     
                 elif query_result == []:
                     
@@ -334,7 +339,7 @@ class AdminWorksContent(QWidget, LoggerMixin):
                     
                     self.search_error_label.setVisible(True)
                     
-                    self.search_error_label.setText("No displayable data '%s' related to" % text)
+                    self.search_error_label.setText("Nincs megjeleníthető adat '%s' kapcsolódóan" % text)
                 
     def __set_content(self, new_view: QWidget):
         
@@ -349,4 +354,3 @@ class AdminWorksContent(QWidget, LoggerMixin):
         self.stack.setCurrentIndex(index)
         
         self.results_widget = new_view
-

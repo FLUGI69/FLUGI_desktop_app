@@ -344,7 +344,7 @@ class Launcher(LoggerMixin):
                     
                     self.window.hide()
                     
-                    sys.exit(0)
+                    os._exit(0)
                     
                 else:
                     
@@ -383,3 +383,4 @@ class Launcher(LoggerMixin):
                 Qt.ConnectionType.QueuedConnection,
                 Q_ARG(int, value)
             )
+            

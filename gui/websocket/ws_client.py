@@ -11,6 +11,7 @@ from utils.dc.websocket.websocket_request import WebsocketRequest
 from utils.dc.websocket.websocket_request_response import WebsocketRequestResponse
 from utils.dc.websocket.redis_event import RedisEvent
 from utils.dc.websocket.auto_message import AutoMessage
+from utils.dc.websocket.reminder_event import ReminderEvent
 from db.network import SSHTunnelConnections, SSHTunnelConnection
 from db.network import SSHTunnelReconnectService
 from db.network import SSHTunnel
@@ -48,6 +49,8 @@ class QtApplicationSocketClient(LoggerMixin):
         self.ssh_tunnel_reconnect_service = None
         
         self.sio = socketio.AsyncClient()
+        
+        self._class_lookup: dict[str, object] | None = None
         
         self._auto_register_handlers(namespace)
     
@@ -90,6 +93,18 @@ class QtApplicationSocketClient(LoggerMixin):
                 ).model_dump()
             )
 
+    async def reminder_action(self, reminder_event: ReminderEvent):
+        
+        if reminder_event is not None:
+            
+            self.log.debug("Emitting reminder_action event: %s" % str(reminder_event))
+            
+            await self.emit("reminder_action", data = WebsocketRequest(
+                success = True,
+                data = reminder_event
+                ).model_dump()
+            )
+
     async def websocket_response_ack(self, data):
         
         if isinstance(data, dict):
@@ -112,6 +127,66 @@ class QtApplicationSocketClient(LoggerMixin):
                         )
                     )
                     
+    def _build_class_lookup(self) -> dict[str, object]:
+       
+        lookup: dict[str, object] = {}
+        
+        login_window = getattr(self.app, "login_window", None)
+        
+        if login_window is None:
+            return lookup
+            
+        main_window = getattr(login_window, "main_window", None)
+        
+        if main_window is None:
+            return lookup
+        
+
+        for attr_name in vars(main_window):
+            
+            if attr_name.startswith("_"):
+                continue
+            
+            attr = getattr(main_window, attr_name, None)
+            
+            if attr is not None and hasattr(attr, "__class__"):
+                cls_name = type(attr).__name__
+                
+                if cls_name not in lookup:
+                    lookup[cls_name] = attr
+        
+        admin_view = getattr(main_window, "admin_view", None)
+        
+        if admin_view is not None:
+            
+            lookup.setdefault("AdminView", admin_view)
+            
+            for attr_name in vars(admin_view):
+                
+                if attr_name.startswith("_"):
+                    continue
+                
+                attr = getattr(admin_view, attr_name, None)
+                
+                if attr is not None and hasattr(attr, "__class__"):
+                    cls_name = type(attr).__name__
+                    
+                    if cls_name not in lookup:
+                        lookup[cls_name] = attr
+        
+        return lookup
+    
+    def _get_class_lookup(self) -> dict[str, object]:
+        
+        if self._class_lookup is None:
+            self._class_lookup = self._build_class_lookup()
+            
+        return self._class_lookup
+    
+    def invalidate_class_lookup(self):
+
+        self._class_lookup = None
+
     async def websocket_response(self, data):
   
         if isinstance(data, dict):
@@ -126,6 +201,20 @@ class QtApplicationSocketClient(LoggerMixin):
                     
                     self.log.info("%s" % websocket_response.data.message)
                 
+                elif isinstance(websocket_response.data, ReminderEvent):
+                    
+                    self.log.info("Received reminder action: %s" % str(websocket_response.data))
+                    
+                    login_window = self.app.login_window
+                    
+                    if login_window is not None:
+                        
+                        main_window = login_window.main_window
+                        
+                        if main_window is not None:
+                            
+                            await main_window.handle_remote_reminder_action(websocket_response.data)
+
                 elif isinstance(websocket_response.data, RedisEvent):
                     
                     service_name = websocket_response.data.service_name
@@ -134,76 +223,42 @@ class QtApplicationSocketClient(LoggerMixin):
                     cache_id = websocket_response.data.cache_id
                     exp = websocket_response.data.exp
                     
-                    for _, app_attr_value in inspect.getmembers(self.app):
-                        
-                        if type(app_attr_value).__name__ == "GmailLoginWindow":
-                            
-                            gmail_login_window = app_attr_value
-                            
-                            for _, gmail_attr_value in inspect.getmembers(gmail_login_window):
-                                
-                                if type(gmail_attr_value).__name__ == "MainWindow":
-                                    
-                                    main_window = gmail_attr_value
-                                   
-                                    for _, main_attr_value in inspect.getmembers(main_window):
-                                       
-                                        if type(main_attr_value).__name__ == class_name:
-                                            
-                                            instance = main_attr_value
-                                   
-                                            method = getattr(instance, method_name, None)
-                                       
-                                            if method is not None and inspect.iscoroutinefunction(method):
-                                                
-                                                try:
+                    lookup = self._get_class_lookup()
+                    instance = lookup.get(class_name)
+                    
+                    if instance is None:
 
-                                                    await method(cache_id = cache_id, exp = exp)
-                                                        
-                                                except Exception as e:
-                                                    
-                                                    self.log.exception("Failed to call method %s on %s: %s" % (
-                                                        method_name,
-                                                        class_name,
-                                                        str(e)
-                                                        )
-                                                    )        
-                                        
-                                        elif type(main_attr_value).__name__ == "AdminView":
-                                            
-                                            admin_view = main_attr_value
-                                      
-                                            for _, admin_attr_value in inspect.getmembers(admin_view):
-                              
-                                                if type(admin_attr_value).__name__ == class_name:
-                                                    
-                                                    instance = admin_attr_value
-                                                    
-                                                    method = getattr(instance, method_name, None)
-                                              
-                                                    if method is not None and inspect.iscoroutinefunction(method):
-                                                        
-                                                        try:
-                                                            
-                                                            target = "dropdown" if service_name == "StorageCacheService" \
-                                                                else "table" if service_name == "AdminStorageItemsCacheService" else None 
-                                                        
-                                                            if target is not None:
-                                                                
-                                                                await method(cache_id = cache_id, exp = exp, target = target)
-                                                            
-                                                            else: 
-                                                                
-                                                                await method()
-                                                                
-                                                        except Exception as e:
-                                                            
-                                                            self.log.exception("Failed to call method %s on %s: %s" % (
-                                                                method_name,
-                                                                class_name,
-                                                                str(e)
-                                                                )
-                                                            )
+                        self.invalidate_class_lookup()
+                        lookup = self._get_class_lookup()
+                        instance = lookup.get(class_name)
+                    
+                    if instance is not None:
+                        
+                        method = getattr(instance, method_name, None)
+                        
+                        if method is not None and inspect.iscoroutinefunction(method):
+                            
+                            try:
+                                
+                                target = "dropdown" if service_name == "StorageCacheService" \
+                                    else "table" if service_name == "AdminStorageItemsCacheService" else None 
+                                
+                                if target is not None:
+                                    
+                                    await method(cache_id = cache_id, exp = exp, target = target)
+                                
+                                else:
+                                    
+                                    await method(cache_id = cache_id, exp = exp)
+                                    
+                            except Exception as e:
+                                
+                                self.log.exception("Failed to call method %s on %s: %s" % (
+                                    method_name,
+                                    class_name,
+                                    str(e)
+                                    )
+                                )
          
     async def setup_websocket(self,
         host: str,

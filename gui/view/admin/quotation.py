@@ -1,4 +1,4 @@
-﻿import os, sys
+import os, sys
 import logging
 import asyncio
 import json
@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 )
 
 from PyQt6.QtCore import Qt, QSize, QUrl, pyqtSignal
-from PyQt6.QtGui import QIcon, QCursor, QDesktopServices
+from PyQt6.QtGui import QIcon, QCursor, QDesktopServices, QColor
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from markupsafe import Markup
@@ -37,7 +37,10 @@ from weasyprint import HTML
 
 from utils.logger import LoggerMixin
 from utils.enums.tax_number_type_enum import TaxNumberTypeEnum
+from utils.enums.hun_price_category_enum import HunPriceCategoryEnum
+from utils.enums.hun_price_tier_enum import HunPriceTierEnum
 from utils.dc.admin.quotation import QuotationData, QuotationTableData, ClientData
+from utils.dc.admin.work.other_work_prices_hun import OtherWorkPricesHun
 from config import Config
 from db import queries
 
@@ -50,6 +53,8 @@ class PriceQuotationContent(QWidget, LoggerMixin):
     log: logging.Logger
     
     refresh_other_work_prices = pyqtSignal()
+    
+    refresh_other_work_prices_hun = pyqtSignal()
 
     def __init__(self,
         admin_view: 'AdminView'         
@@ -116,7 +121,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         frame = QFrame()
         layout = QVBoxLayout(frame)
         
-        lang_label = QLabel("Language")
+        lang_label = QLabel("Nyelv")
         lang_label.setStyleSheet(Config.styleSheets.label)
         
         self.language_dropdown = QComboBox()
@@ -141,7 +146,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         frame = QFrame()
         layout = QHBoxLayout(frame)
 
-        input_label = QLabel("Input Currency")
+        input_label = QLabel("Ár beviteli pénznem")
         input_label.setStyleSheet(Config.styleSheets.label)
         
         self.currency_input_dropdown = QComboBox()
@@ -150,7 +155,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.currency_input_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.currency_input_dropdown.setFixedHeight(50)
 
-        output_label = QLabel("Output Currency")
+        output_label = QLabel("Kimeneti pénznem")
         output_label.setStyleSheet(Config.styleSheets.label)
         
         self.currency_output_dropdown = QComboBox()
@@ -188,7 +193,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.client_name = QLineEdit()
         self.client_name.setFixedHeight(50)
         self.client_name.setStyleSheet(Config.styleSheets.line_edit)
-        self.client_name.setPlaceholderText("Client Name (Example Ltd.)")
+        self.client_name.setPlaceholderText("Megrendelő neve (Example Company Ltd.)")
         
         self.client_name_error = QLabel()
         self.client_name_error.setObjectName("error")
@@ -197,12 +202,12 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.client_address = QLineEdit()
         self.client_address.setFixedHeight(50)
         self.client_address.setStyleSheet(Config.styleSheets.line_edit)
-        self.client_address.setPlaceholderText("Client Address (1234. Example Street 111.)")
+        self.client_address.setPlaceholderText("Megrendelő címe (Example Street 1, Budapest, Hungary)")
         
         self.client_country = QLineEdit()
         self.client_country.setFixedHeight(50)
         self.client_country.setStyleSheet(Config.styleSheets.line_edit)
-        self.client_country.setPlaceholderText("Country (Exampleland)")
+        self.client_country.setPlaceholderText("Ország (Hungary)")
         
         self.client_vat = QLineEdit()
         self.client_vat.setFixedHeight(50)
@@ -250,7 +255,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.existing_client_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.existing_client_dropdown.setFixedHeight(50)
         self.existing_client_dropdown.setMaxVisibleItems(15)
-        self.existing_client_dropdown.addItem("-- Select Client --", None)
+        self.existing_client_dropdown.addItem("-- Válassz klienst --", None)
         self.existing_client_dropdown.currentIndexChanged.connect(
             lambda: asyncio.ensure_future(self._on_existing_client_changed())
         )
@@ -260,7 +265,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.existing_client_name = QLineEdit()
         self.existing_client_name.setFixedHeight(50)
         self.existing_client_name.setStyleSheet(Config.styleSheets.line_edit)
-        self.existing_client_name.setPlaceholderText("Client Name")
+        self.existing_client_name.setPlaceholderText("Megrendelő neve")
         
         self.existing_client_name_error = QLabel()
         self.existing_client_name_error.setObjectName("error")
@@ -269,17 +274,17 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.existing_client_address = QLineEdit()
         self.existing_client_address.setFixedHeight(50)
         self.existing_client_address.setStyleSheet(Config.styleSheets.line_edit)
-        self.existing_client_address.setPlaceholderText("Client Address")
+        self.existing_client_address.setPlaceholderText("Megrendelő címe")
         
         self.existing_client_country = QLineEdit()
         self.existing_client_country.setFixedHeight(50)
         self.existing_client_country.setStyleSheet(Config.styleSheets.line_edit)
-        self.existing_client_country.setPlaceholderText("Country")
+        self.existing_client_country.setPlaceholderText("Ország")
         
         self.existing_client_vat = QLineEdit()
         self.existing_client_vat.setFixedHeight(50)
         self.existing_client_vat.setStyleSheet(Config.styleSheets.line_edit)
-        self.existing_client_vat.setPlaceholderText("VAT Number")
+        
         self.existing_client_vat_error = QLabel()
         self.existing_client_vat_error.setObjectName("error")
         self.existing_client_vat_error.setVisible(False)
@@ -316,8 +321,8 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         existing_client_layout.addWidget(self.existing_client_dropdown)
         existing_client_layout.addLayout(existing_fields_layout)
         
-        self.client_tab_widget.addTab(new_client_tab, "New Client")
-        self.client_tab_widget.addTab(existing_client_tab, "Existing Client")
+        self.client_tab_widget.addTab(new_client_tab, "Új kliens")
+        self.client_tab_widget.addTab(existing_client_tab, "Meglévő kliens")
         
         frame_layout.addWidget(self.client_tab_widget)
 
@@ -331,12 +336,13 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.boat_name = QLineEdit()
         self.boat_name.setFixedHeight(50)
         self.boat_name.setStyleSheet(Config.styleSheets.line_edit)
-        self.boat_name.setPlaceholderText("Boat Name (MS Viktoria)")
+        self.boat_name.setPlaceholderText("Hajó neve (MS Viktoria)")
 
         self.work_description = QTextEdit()
+        self.work_description.setAcceptRichText(False)
         self.work_description.setStyleSheet(Config.styleSheets.text_edit)
         self.work_description.setFixedHeight(150)
-        self.work_description.setPlaceholderText("Work Description (Heat Pump Replacement)")
+        self.work_description.setPlaceholderText("Munka leírása (Hőlégszivattyú csere)")
 
         vat_layout = QHBoxLayout()
         
@@ -345,8 +351,8 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.surcharge_dropdown.setStyleSheet(Config.styleSheets.dropdown_style)
         self.surcharge_dropdown.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.surcharge_dropdown.setFixedHeight(50)
-        self.surcharge_dropdown.addItem("No Surcharge", False)
-        self.surcharge_dropdown.addItem("Surcharge %", True)
+        self.surcharge_dropdown.addItem("Nincs felár", False)
+        self.surcharge_dropdown.addItem("Felár %", True)
         self.surcharge_dropdown.setCurrentIndex(0)
         
         self.surcharge_percentage_input = QLineEdit()
@@ -363,7 +369,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
 
         self.work_table = QTableWidget(0, 5)
         self.work_table.setStyleSheet(Config.styleSheets.table_widget)
-        self.work_table.setHorizontalHeaderLabels(["Description", "Quantity", "Unit", "Net Price", ""])
+        self.work_table.setHorizontalHeaderLabels(["Megnevezés", "Mennyiség", "Mennyiségi egység", "Netto ár", ""])
         self.work_table.setFixedHeight(250)
         self.work_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.work_table.verticalHeader().setDefaultSectionSize(50)
@@ -380,7 +386,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             
             self.work_table.setColumnWidth(i, widths[i])
 
-        add_row_btn = QPushButton("Add Row")
+        add_row_btn = QPushButton("Hozzáadás")
         add_row_btn.setObjectName("WorkBtn")
         add_row_btn.setStyleSheet(Config.styleSheets.work_btn)
         add_row_btn.setFixedWidth(200)
@@ -388,7 +394,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         add_row_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_row_btn.clicked.connect(self.add_row)
         
-        label = QLabel("Work Details")
+        label = QLabel("Munka részletei")
         label.setStyleSheet(Config.styleSheets.label)
 
         layout.addWidget(label)
@@ -406,22 +412,23 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         layout = QVBoxLayout(frame)
         layout.setSpacing(2)
         
-        label = QLabel("Other information")
+        label = QLabel("További információk")
         label.setStyleSheet(Config.styleSheets.label)
         label.setContentsMargins(0, 0, 0, 0)
 
         layout.addWidget(label)
         
         self.additional_info = QTextEdit()
+        self.additional_info.setAcceptRichText(False)
         self.additional_info.setStyleSheet(Config.styleSheets.text_edit)
         self.additional_info.setFixedHeight(150)
-        self.additional_info.setPlaceholderText("Additional information")
+        self.additional_info.setPlaceholderText("Kiegészítő információk")
         
         layout.addWidget(self.additional_info)
 
         checkbox_layout = QHBoxLayout()
         
-        self.custom_prices_checkbox = QCheckBox("Modify custom prices")
+        self.custom_prices_checkbox = QCheckBox("Egyedi árak módosítása (EUR-ban megadva)")
         self.custom_prices_checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.custom_prices_checkbox.setStyleSheet(Config.styleSheets.label)
         self.custom_prices_checkbox.stateChanged.connect(self._on_custom_prices_toggled)
@@ -439,68 +446,68 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         self.price_work_during_hours = QLineEdit()
         self.price_work_during_hours.setFixedHeight(50)
         self.price_work_during_hours.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_work_during_hours.setPlaceholderText("Work during hours")
+        self.price_work_during_hours.setPlaceholderText("Munka munkaidőben")
         
         self.price_work_outside_hours = QLineEdit()
         self.price_work_outside_hours.setFixedHeight(50)
         self.price_work_outside_hours.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_work_outside_hours.setPlaceholderText("Work outside hours and on Saturdays")
+        self.price_work_outside_hours.setPlaceholderText("Munkaidőn kívül és szombaton")
         
         self.price_work_sundays = QLineEdit()
         self.price_work_sundays.setFixedHeight(50)
         self.price_work_sundays.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_work_sundays.setPlaceholderText("Sundays and holidays +100%")
+        self.price_work_sundays.setPlaceholderText("Vasárnap és ünnepnapokon +100%")
         
         self.price_travel_budapest = QLineEdit()
         self.price_travel_budapest.setFixedHeight(50)
         self.price_travel_budapest.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_travel_budapest.setPlaceholderText("Travel within Budapest")
+        self.price_travel_budapest.setPlaceholderText("Utazás Budapesten belül")
         
         self.price_travel_outside = QLineEdit()
         self.price_travel_outside.setFixedHeight(50)
         self.price_travel_outside.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_travel_outside.setPlaceholderText("Travel outside Budapest / abroad")
+        self.price_travel_outside.setPlaceholderText("Utazás Budapesten kívül / külföld")
         
         self.price_travel_time = QLineEdit()
         self.price_travel_time.setFixedHeight(50)
         self.price_travel_time.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_travel_time.setPlaceholderText("Travel time")
+        self.price_travel_time.setPlaceholderText("Utazási idő")
         
         self.price_travel_time_outside = QLineEdit()
         self.price_travel_time_outside.setFixedHeight(50)
         self.price_travel_time_outside.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_travel_time_outside.setPlaceholderText("Travel time outside working hours +50%")
+        self.price_travel_time_outside.setPlaceholderText("Utazási idő munkaidőn kívül +50%")
         
         self.price_travel_time_sundays = QLineEdit()
         self.price_travel_time_sundays.setFixedHeight(50)
         self.price_travel_time_sundays.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_travel_time_sundays.setPlaceholderText("Travel time on Sundays +100%")
+        self.price_travel_time_sundays.setPlaceholderText("Utazási idő vasárnap +100%")
         
         self.price_accommodation = QLineEdit()
         self.price_accommodation.setFixedHeight(50)
         self.price_accommodation.setStyleSheet(Config.styleSheets.line_edit)
-        self.price_accommodation.setPlaceholderText("Accommodation")
+        self.price_accommodation.setPlaceholderText("Szállás")
         
-        prices_layout.addRow(QLabel("Work during hours:"), self.price_work_during_hours)
-        prices_layout.addRow(QLabel("Work outside hours and on Saturdays:"), self.price_work_outside_hours)
-        prices_layout.addRow(QLabel("Sundays and holidays +100%:"), self.price_work_sundays)
-        prices_layout.addRow(QLabel("Travel within Budapest:"), self.price_travel_budapest)
-        prices_layout.addRow(QLabel("Travel outside Budapest / abroad:"), self.price_travel_outside)
-        prices_layout.addRow(QLabel("Travel time:"), self.price_travel_time)
-        prices_layout.addRow(QLabel("Travel time outside working hours +50%:"), self.price_travel_time_outside)
-        prices_layout.addRow(QLabel("Travel time on Sundays +100%:"), self.price_travel_time_sundays)
-        prices_layout.addRow(QLabel("Accommodation:"), self.price_accommodation)
+        prices_layout.addRow(QLabel("Munka munkaidőben:"), self.price_work_during_hours)
+        prices_layout.addRow(QLabel("Munkaidőn kívül és szombaton:"), self.price_work_outside_hours)
+        prices_layout.addRow(QLabel("Vasárnap és ünnepnapokon +100%:"), self.price_work_sundays)
+        prices_layout.addRow(QLabel("Utazás Budapesten belül:"), self.price_travel_budapest)
+        prices_layout.addRow(QLabel("Utazás Budapesten kívül / külföld:"), self.price_travel_outside)
+        prices_layout.addRow(QLabel("Utazási idő:"), self.price_travel_time)
+        prices_layout.addRow(QLabel("Utazási idő munkaidőn kívül +50%:"), self.price_travel_time_outside)
+        prices_layout.addRow(QLabel("Utazási idő vasárnap +100%:"), self.price_travel_time_sundays)
+        prices_layout.addRow(QLabel("Szállás:"), self.price_accommodation)
         
         prices_btn_layout = QHBoxLayout()
         
-        self.load_prices_btn = QPushButton("Load Prices")
+        self.load_prices_btn = QPushButton("Árak betöltése")
         self.load_prices_btn.setObjectName("WorkBtn")
         self.load_prices_btn.setStyleSheet(Config.styleSheets.work_btn)
         self.load_prices_btn.setFixedSize(200, 50)
         self.load_prices_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.load_prices_btn.clicked.connect(self._load_current_prices)
         
-        self.save_prices_btn = QPushButton("Save Prices")
+        self.save_prices_btn = QPushButton("Árak mentése")
         self.save_prices_btn.setObjectName("WorkBtn")
         self.save_prices_btn.setStyleSheet(Config.styleSheets.work_btn)
         self.save_prices_btn.setFixedSize(200, 50)
@@ -514,6 +521,128 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         prices_layout.addRow(prices_btn_layout)
         
         layout.addWidget(self.custom_prices_container)
+        
+        hun_checkbox_layout = QHBoxLayout()
+        
+        self.custom_prices_hun_checkbox = QCheckBox("Magyar árak módosítása (HUF + ÁFA)")
+        self.custom_prices_hun_checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.custom_prices_hun_checkbox.setStyleSheet(Config.styleSheets.label)
+        self.custom_prices_hun_checkbox.stateChanged.connect(self._on_custom_prices_hun_toggled)
+        
+        hun_checkbox_layout.addWidget(self.custom_prices_hun_checkbox)
+        hun_checkbox_layout.addStretch()
+        
+        layout.addLayout(hun_checkbox_layout)
+        
+        self.custom_prices_hun_container = QWidget()
+        self.custom_prices_hun_container.setVisible(False)
+        hun_prices_layout = QFormLayout(self.custom_prices_hun_container)
+        hun_prices_layout.setSpacing(8)
+        
+        hun_prices_layout.addRow(QLabel("Felmérés és szállítás rezsióradíja:"))
+        
+        self.hun_survey_weekday = QLineEdit()
+        self.hun_survey_weekday.setFixedHeight(50)
+        self.hun_survey_weekday.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_survey_weekday.setPlaceholderText("Hétköznap H-P 08:00-17:00")
+        
+        self.hun_survey_weekend = QLineEdit()
+        self.hun_survey_weekend.setFixedHeight(50)
+        self.hun_survey_weekend.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_survey_weekend.setPlaceholderText("Munkaidőn kívül és szombaton +50%")
+        
+        self.hun_survey_sunday = QLineEdit()
+        self.hun_survey_sunday.setFixedHeight(50)
+        self.hun_survey_sunday.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_survey_sunday.setPlaceholderText("Vasárnap ünnepnapokon +100%")
+        
+        hun_prices_layout.addRow(QLabel("Hétköznap H-P 08:00-17:00:"), self.hun_survey_weekday)
+        hun_prices_layout.addRow(QLabel("Munkaidőn kívül és szombaton +50%:"), self.hun_survey_weekend)
+        hun_prices_layout.addRow(QLabel("Vasárnap ünnepnapokon +100%:"), self.hun_survey_sunday)
+        
+        hun_prices_layout.addRow(QLabel(""))
+        hun_prices_layout.addRow(QLabel("Javítás és karbantartás rezsióradíja:"))
+        
+        self.hun_repair_weekday = QLineEdit()
+        self.hun_repair_weekday.setFixedHeight(50)
+        self.hun_repair_weekday.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_repair_weekday.setPlaceholderText("Hétköznap H-P 08:00-17:00")
+        
+        self.hun_repair_weekend = QLineEdit()
+        self.hun_repair_weekend.setFixedHeight(50)
+        self.hun_repair_weekend.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_repair_weekend.setPlaceholderText("Munkaidőn kívül és szombaton +50%")
+        
+        self.hun_repair_sunday = QLineEdit()
+        self.hun_repair_sunday.setFixedHeight(50)
+        self.hun_repair_sunday.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_repair_sunday.setPlaceholderText("Vasárnap ünnepnapokon +100%")
+        
+        hun_prices_layout.addRow(QLabel("Hétköznap H-P 08:00-17:00:"), self.hun_repair_weekday)
+        hun_prices_layout.addRow(QLabel("Munkaidőn kívül és szombaton +50%:"), self.hun_repair_weekend)
+        hun_prices_layout.addRow(QLabel("Vasárnap ünnepnapokon +100%:"), self.hun_repair_sunday)
+        
+        hun_prices_layout.addRow(QLabel(""))
+        hun_prices_layout.addRow(QLabel("Kiszállási díjak:"))
+        
+        self.hun_travel_budapest = QLineEdit()
+        self.hun_travel_budapest.setFixedHeight(50)
+        self.hun_travel_budapest.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_travel_budapest.setPlaceholderText("Budapest területén / alkalom")
+        
+        self.hun_travel_outside_km = QLineEdit()
+        self.hun_travel_outside_km.setFixedHeight(50)
+        self.hun_travel_outside_km.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_travel_outside_km.setPlaceholderText("Vidékre / km")
+        
+        hun_prices_layout.addRow(QLabel("Budapest területén (/ alkalom):"), self.hun_travel_budapest)
+        hun_prices_layout.addRow(QLabel("Vidékre (/ km):"), self.hun_travel_outside_km)
+        
+        hun_prices_layout.addRow(QLabel(""))
+        hun_prices_layout.addRow(QLabel("Utazási idő vidékre:"))
+        
+        self.hun_travel_time_weekday = QLineEdit()
+        self.hun_travel_time_weekday.setFixedHeight(50)
+        self.hun_travel_time_weekday.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_travel_time_weekday.setPlaceholderText("Hétköznap H-P 08:00-17:00")
+        
+        self.hun_travel_time_weekend = QLineEdit()
+        self.hun_travel_time_weekend.setFixedHeight(50)
+        self.hun_travel_time_weekend.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_travel_time_weekend.setPlaceholderText("Munkaidőn kívül és szombaton +50%")
+        
+        self.hun_travel_time_sunday = QLineEdit()
+        self.hun_travel_time_sunday.setFixedHeight(50)
+        self.hun_travel_time_sunday.setStyleSheet(Config.styleSheets.line_edit)
+        self.hun_travel_time_sunday.setPlaceholderText("Vasárnap ünnepnapokon +100%")
+        
+        hun_prices_layout.addRow(QLabel("Hétköznap H-P 08:00-17:00:"), self.hun_travel_time_weekday)
+        hun_prices_layout.addRow(QLabel("Munkaidőn kívül és szombaton +50%:"), self.hun_travel_time_weekend)
+        hun_prices_layout.addRow(QLabel("Vasárnap ünnepnapokon +100%:"), self.hun_travel_time_sunday)
+        
+        hun_prices_btn_layout = QHBoxLayout()
+        
+        self.load_prices_hun_btn = QPushButton("HUF árak betöltése")
+        self.load_prices_hun_btn.setObjectName("WorkBtn")
+        self.load_prices_hun_btn.setStyleSheet(Config.styleSheets.work_btn)
+        self.load_prices_hun_btn.setFixedSize(200, 50)
+        self.load_prices_hun_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.load_prices_hun_btn.clicked.connect(self._load_current_prices_hun)
+        
+        self.save_prices_hun_btn = QPushButton("HUF árak mentése")
+        self.save_prices_hun_btn.setObjectName("WorkBtn")
+        self.save_prices_hun_btn.setStyleSheet(Config.styleSheets.work_btn)
+        self.save_prices_hun_btn.setFixedSize(200, 50)
+        self.save_prices_hun_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_prices_hun_btn.clicked.connect(lambda: asyncio.ensure_future(self._save_other_work_prices_hun()))
+        
+        hun_prices_btn_layout.addWidget(self.load_prices_hun_btn)
+        hun_prices_btn_layout.addWidget(self.save_prices_hun_btn)
+        hun_prices_btn_layout.addStretch()
+        
+        hun_prices_layout.addRow(hun_prices_btn_layout)
+        
+        layout.addWidget(self.custom_prices_hun_container)
 
         return frame
     
@@ -531,19 +660,22 @@ class PriceQuotationContent(QWidget, LoggerMixin):
 
         self.web_view = QWebEngineView()
         self.web_view.setMinimumSize(1000, 1400)
+        self.web_view.page().setBackgroundColor(QColor("#363636"))
+        self.web_view.setVisible(False)
+        self.web_view.loadFinished.connect(lambda ok: self.web_view.setVisible(True))
 
         scroll.setWidget(self.web_view)
 
         btn_layout = QHBoxLayout()
         
-        self.render_button = QPushButton("Update Preview")
+        self.render_button = QPushButton("Előnézet frissítése")
         self.render_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.render_button.setObjectName("WorkBtn")
         self.render_button.setStyleSheet(Config.styleSheets.work_btn)
         self.render_button.setFixedSize(200, 50)
         self.render_button.clicked.connect(self.update_preview)
 
-        self.export_button = QPushButton("Export PDF")
+        self.export_button = QPushButton("PDF exportálása")
         self.export_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.export_button.setObjectName("WorkBtn")
         self.export_button.setStyleSheet(Config.styleSheets.work_btn)
@@ -578,30 +710,30 @@ class PriceQuotationContent(QWidget, LoggerMixin):
     def _on_tax_type_changed(self):
         
         placeholders = {
-            TaxNumberTypeEnum.VAT: "Tax number (HU14515404242)",
-            TaxNumberTypeEnum.UID: "UID number (CHE-123.456.789 MWST)",
-            TaxNumberTypeEnum.EIN: "EIN / TIN number (12-3456789)",
-            TaxNumberTypeEnum.MVA: "MVA number (NO123456789MVA)",
-            TaxNumberTypeEnum.VKN: "VKN number (1234567890)"
+            TaxNumberTypeEnum.VAT: "Adószám (HU14515404242)",
+            TaxNumberTypeEnum.UID: "UID szám (CHE-123.456.789 MWST)",
+            TaxNumberTypeEnum.EIN: "EIN / TIN szám (12-3456789)",
+            TaxNumberTypeEnum.MVA: "MVA szám (NO123456789MVA)",
+            TaxNumberTypeEnum.VKN: "VKN szám (1234567890)"
         }
         
         tax_type = self.tax_type_dropdown.currentData()
         
-        self.client_vat.setPlaceholderText(placeholders.get(tax_type, "Tax number"))
+        self.client_vat.setPlaceholderText(placeholders.get(tax_type, "Adószám"))
     
     def _on_existing_tax_type_changed(self):
         
         placeholders = {
-            TaxNumberTypeEnum.VAT: "Tax number (HU14515404242)",
-            TaxNumberTypeEnum.UID: "UID number (CHE-123.456.789 MWST)",
-            TaxNumberTypeEnum.EIN: "EIN / TIN number (12-3456789)",
-            TaxNumberTypeEnum.MVA: "MVA number (NO123456789MVA)",
-            TaxNumberTypeEnum.VKN: "VKN number (1234567890)"
+            TaxNumberTypeEnum.VAT: "Adószám (HU14515404242)",
+            TaxNumberTypeEnum.UID: "UID szám (CHE-123.456.789 MWST)",
+            TaxNumberTypeEnum.EIN: "EIN / TIN szám (12-3456789)",
+            TaxNumberTypeEnum.MVA: "MVA szám (NO123456789MVA)",
+            TaxNumberTypeEnum.VKN: "VKN szám (1234567890)"
         }
         
         tax_type = self.existing_tax_type_dropdown.currentData()
         
-        self.existing_client_vat.setPlaceholderText(placeholders.get(tax_type, "Tax number"))
+        self.existing_client_vat.setPlaceholderText(placeholders.get(tax_type, "Adószám"))
     
     async def _fetch_existing_clients(self):
         
@@ -612,7 +744,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             self.existing_client_dropdown.blockSignals(True)
             
             self.existing_client_dropdown.clear()
-            self.existing_client_dropdown.addItem("-- Select a client --", None)
+            self.existing_client_dropdown.addItem("-- Válassz klienst --", None)
             
             for client in clients:
                 
@@ -693,6 +825,77 @@ class PriceQuotationContent(QWidget, LoggerMixin):
     def _on_custom_prices_toggled(self, state):
         
         self.custom_prices_container.setVisible(state == Qt.CheckState.Checked.value)
+    
+    def _on_custom_prices_hun_toggled(self, state):
+        
+        self.custom_prices_hun_container.setVisible(state == Qt.CheckState.Checked.value)
+    
+    def _load_current_prices_hun(self):
+        
+        hun_prices = getattr(self.admin_view.main_window, 'other_work_prices_hun', None)
+        
+        if hun_prices is None:
+            
+            self.log.warning("HUF prices not loaded yet")
+            
+            return
+        
+        self.hun_survey_weekday.setText(str(round(float(hun_prices.survey_delivery.weekday), 2)))
+        self.hun_survey_weekend.setText(str(round(float(hun_prices.survey_delivery.weekend), 2)))
+        self.hun_survey_sunday.setText(str(round(float(hun_prices.survey_delivery.sunday), 2)))
+        
+        self.hun_repair_weekday.setText(str(round(float(hun_prices.repair_maintenance.weekday), 2)))
+        self.hun_repair_weekend.setText(str(round(float(hun_prices.repair_maintenance.weekend), 2)))
+        self.hun_repair_sunday.setText(str(round(float(hun_prices.repair_maintenance.sunday), 2)))
+        
+        self.hun_travel_budapest.setText(str(round(float(hun_prices.travel_budapest), 2)))
+        self.hun_travel_outside_km.setText(str(round(float(hun_prices.travel_outside_km), 2)))
+        
+        self.hun_travel_time_weekday.setText(str(round(float(hun_prices.travel_time.weekday), 2)))
+        self.hun_travel_time_weekend.setText(str(round(float(hun_prices.travel_time.weekend), 2)))
+        self.hun_travel_time_sunday.setText(str(round(float(hun_prices.travel_time.sunday), 2)))
+    
+    def _parse_hun_price_field(self, field) -> Decimal:
+        
+        text = field.text().replace(",", ".").strip()
+        
+        return Decimal(str(round(float(text), 2))) if text else Decimal("0")
+    
+    async def _save_other_work_prices_hun(self):
+        
+        try:
+            
+            tier_prices = {
+                HunPriceCategoryEnum.SURVEY_DELIVERY: {
+                    HunPriceTierEnum.WEEKDAY: self._parse_hun_price_field(self.hun_survey_weekday),
+                    HunPriceTierEnum.WEEKEND: self._parse_hun_price_field(self.hun_survey_weekend),
+                    HunPriceTierEnum.SUNDAY: self._parse_hun_price_field(self.hun_survey_sunday),
+                },
+                HunPriceCategoryEnum.REPAIR_MAINTENANCE: {
+                    HunPriceTierEnum.WEEKDAY: self._parse_hun_price_field(self.hun_repair_weekday),
+                    HunPriceTierEnum.WEEKEND: self._parse_hun_price_field(self.hun_repair_weekend),
+                    HunPriceTierEnum.SUNDAY: self._parse_hun_price_field(self.hun_repair_sunday),
+                },
+                HunPriceCategoryEnum.TRAVEL_TIME: {
+                    HunPriceTierEnum.WEEKDAY: self._parse_hun_price_field(self.hun_travel_time_weekday),
+                    HunPriceTierEnum.WEEKEND: self._parse_hun_price_field(self.hun_travel_time_weekend),
+                    HunPriceTierEnum.SUNDAY: self._parse_hun_price_field(self.hun_travel_time_sunday),
+                },
+            }
+            
+            await queries.update_other_work_prices_hun(
+                travel_budapest = self._parse_hun_price_field(self.hun_travel_budapest),
+                travel_outside_km = self._parse_hun_price_field(self.hun_travel_outside_km),
+                tier_prices = tier_prices
+            )
+            
+            self.refresh_other_work_prices_hun.emit()
+            
+            self.log.info("HUF other work prices updated successfully")
+            
+        except Exception as e:
+            
+            self.log.error("Failed to update HUF other work prices: %s" % str(e))
     
     def _load_current_prices(self):
         
@@ -807,7 +1010,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         if client_name == "":
             
-            name_error_label.setText("Client name is required")
+            name_error_label.setText("Megrendelő neve kötelező")
             name_error_label.setVisible(True)
             
             self.log.warning("Input validation failed: 'client_name' field is empty")
@@ -816,7 +1019,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         if client_vat == "":
             
-            vat_error_label.setText("Tax number is required")
+            vat_error_label.setText("Adószám megadása kötelező")
             vat_error_label.setVisible(True)
             
             self.log.warning("Input validation failed: 'client_vat' field is empty")
@@ -825,7 +1028,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         if client_vat != "" and self._validate_tax_number(client_vat, tax_type) is False:
             
-            vat_error_label.setText("The tax number does not match the %s format" % tax_type.value)
+            vat_error_label.setText("Az adószám nem felel meg a(z) %s formátumnak" % tax_type.value)
             vat_error_label.setVisible(True)
             
             self.log.warning("Tax number '%s' does not match %s format" % (client_vat, tax_type.value))
@@ -871,7 +1074,16 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         hu_pdf_file = os.path.join(hungarian_dir, pdf_filename)
         
-        HTML(string = html_hu).write_pdf(hu_pdf_file)
+        doc_hu = HTML(string = html_hu).render()
+        
+        if len(doc_hu.pages) > 1:
+            
+            html_hu = self.render_html(order_number = real_order_number, show_page_numbers = True)
+            HTML(string = html_hu).write_pdf(hu_pdf_file)
+            
+        else:
+            
+            doc_hu.write_pdf(hu_pdf_file)
         
         self.log.debug("Hungarian PDF saved: %s" % hu_pdf_file)
         
@@ -901,7 +1113,22 @@ class PriceQuotationContent(QWidget, LoggerMixin):
                 
                 other_pdf_file = os.path.join(other_dir, pdf_filename)
                 
-                HTML(string = html_other).write_pdf(other_pdf_file)
+                doc_other = HTML(string = html_other).render()
+                
+                if len(doc_other.pages) > 1:
+                    
+                    html_other = self.render_html(
+                        translator = translator,
+                        translated_content = all_translations,
+                        order_number = real_order_number,
+                        show_page_numbers = True
+                    )
+                    
+                    HTML(string = html_other).write_pdf(other_pdf_file)
+                    
+                else:
+                    
+                    doc_other.write_pdf(other_pdf_file)
                 
                 self.log.debug("Translated PDF saved: %s" % other_pdf_file)
                 
@@ -1023,6 +1250,10 @@ class PriceQuotationContent(QWidget, LoggerMixin):
                 
         return enabled, percent
 
+    def _get_hun_prices(self) -> OtherWorkPricesHun | None:
+        
+        return getattr(self.admin_view.main_window, 'other_work_prices_hun', None)
+    
     def _get_converted_prices(self) -> dict:
         
         _, output_currency = self.get_currency_settings()
@@ -1056,7 +1287,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             
             return converted
         
-        raw_prices = self.other_work_prices.model_dump()
+        raw_prices = self.admin_view.main_window.other_work_prices.model_dump()
         
         converted = {}
         
@@ -1146,7 +1377,12 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             items = items
         )
     
-    def render_html(self, translator = None, translated_content: dict = None, order_number: str = None):
+    def render_html(self, 
+        translator = None, 
+        translated_content: dict = None, 
+        order_number: str = None, 
+        show_page_numbers: bool = False
+        ):
     
         if translator is None:
             
@@ -1202,6 +1438,10 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             
             items = translated_items
         
+        lang_code = self.language_dropdown.currentData()
+        
+        hun_prices = self._get_hun_prices() if lang_code == "HU" else None
+        
         html = self.quotation_template.render(
             cts_logo = cts_logo,
             cred_logo = cred_logo,
@@ -1211,6 +1451,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             client = quotation_data.client,
             data = items,
             prices = self._get_converted_prices(),
+            hun_prices = hun_prices,
             description = Markup(description.replace("\n","<br>")),
             information = Markup(information.replace("\n","<br>")),
             total_price = self.format_price(total_price),
@@ -1218,6 +1459,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             current_date = Markup(today.strftime("%Y. %m. %d.")),
             valid_until_date = Markup(valid_until.strftime("%Y. %m. %d.")),
             max_rows = len(items),
+            show_page_numbers = show_page_numbers,
             _ = translator
         )
         
@@ -1318,15 +1560,10 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             response = await self.openai.chat.completions.create(
                 model = "gpt-5.1",
                 messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            f"The target language is: {lang_name} (code: {lang_code}). "
-                            "Translate the following Hungarian texts into this language. "
-                            "Respond only with a valid JSON object where the keys are the original Hungarian texts, "
-                            "and the values are the translated texts. No explanations, no additional text."
-                        )
-                    },
+                    {"role": "system", "content": f"A célnyelv: {lang_name} (kód: {lang_code}). \
+                        Fordítsd le az alábbi magyar szövegeket erre a nyelvre. \
+                        Csak egy érvényes JSON objektummal válaszolj, ahol a kulcsok az eredeti magyar szövegek, \
+                        az értékek pedig a lefordított szövegek. Semmi magyarázás, semmi körítés."},
                     {"role": "user", "content": prompt_text}
                 ],
             )
@@ -1381,14 +1618,14 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         all_currencies = ["HUF"] + sorted(self.available_currencies)
         
         self.currency_input_dropdown.clear()
-        self.currency_input_dropdown.addItem("-- Input currency --", None)
+        self.currency_input_dropdown.addItem("-- Beviteli pénznem --", None)
         
         for text in all_currencies:
             
             self.currency_input_dropdown.addItem(text, text)
         
         self.currency_output_dropdown.clear()
-        self.currency_output_dropdown.addItem("-- No conversion --", None)
+        self.currency_output_dropdown.addItem("-- Nincs átváltás --", None)
         
         for text in all_currencies:
             

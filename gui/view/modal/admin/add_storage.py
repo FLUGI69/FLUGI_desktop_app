@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 
 from PyQt6.QtWidgets import (
@@ -26,7 +26,7 @@ class AddStorageModal(QDialog, LoggerMixin):
         
         self._future = None
         
-        self.setWindowTitle("Create storage")
+        self.setWindowTitle("Raktár létrehozás")
         
         self.setModal(True)
         
@@ -40,7 +40,7 @@ class AddStorageModal(QDialog, LoggerMixin):
         
         self.setObjectName("AddStorageModal")
         
-        self.label_name = QLabel("Name:")
+        self.label_name = QLabel("Név:")
         self.input_name = QLineEdit()
         self.input_name.setObjectName("input_unit")
         self.input_name.setFixedHeight(35)
@@ -108,7 +108,7 @@ class AddStorageModal(QDialog, LoggerMixin):
         
         if name == "":
             
-            self.input_name_error.setText("Name cannot be empty")
+            self.input_name_error.setText("Megnevezés nem lehet üres")
             self.input_name_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'name' field is empty")
@@ -117,7 +117,7 @@ class AddStorageModal(QDialog, LoggerMixin):
 
         if location == "":
             
-            self.input_location_error.setText("Location cannot be empty")
+            self.input_location_error.setText("Telephely nem lehet üres")
             self.input_location_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'location' field is empty")
@@ -160,7 +160,7 @@ class AddStorageModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -176,7 +176,7 @@ class AddStorageModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             

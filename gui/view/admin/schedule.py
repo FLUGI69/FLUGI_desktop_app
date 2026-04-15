@@ -1,4 +1,4 @@
-﻿from functools import partial
+from functools import partial
 from qasync import asyncSlot
 import logging
 import typing as t
@@ -77,7 +77,7 @@ class ScheduleContent(QWidget, LoggerMixin):
         
         self.input_field = SearchLineEdit(btn_callback = self.__on_btn_clicked)
         self.input_field.setObjectName("BoatSearchInput")
-        self.input_field.setPlaceholderText("Schedule search...")
+        self.input_field.setPlaceholderText("Menetrend keresés...")
         self.input_field.setFixedHeight(35)
         self.input_field.setMaximumWidth(380)
 
@@ -89,7 +89,7 @@ class ScheduleContent(QWidget, LoggerMixin):
         self.success_label.setObjectName("success")
         self.success_label.setVisible(False)
 
-        schedule_add_btn = QPushButton("Menetrend Adda")
+        schedule_add_btn = QPushButton("Menetrend Hozzáadása")
         schedule_add_btn.setObjectName("BoatSearchBtn")
         schedule_add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         schedule_add_btn.setFixedHeight(35)
@@ -222,7 +222,7 @@ class ScheduleContent(QWidget, LoggerMixin):
             self.log.warning(modified.message)
             
             self.error_label.setVisible(True)
-            self.error_label.setText(f"Invalid date format: '{modified.str_date}' expected: 'YYYY-MM-DD HH:MM'")
+            self.error_label.setText(f"Nem megfelelő dátum formátum: '{modified.str_date}' megfelelő: 'ÉÉÉÉ-HH-NN OO:PP'")
             
             return
     
@@ -249,14 +249,14 @@ class ScheduleContent(QWidget, LoggerMixin):
                     values_to_update["leave_date"] = modified[0].leave_date
                 
                 try:
-                    
+
                     await queries.update_schedule_by_id(
                         id = modified[0].schedule_id,
                         values_to_update = values_to_update
                     )
 
                     self.success_label.setVisible(True)
-                    self.success_label.setText(f"Schedule updated successfully")
+                    self.success_label.setText(f"Sikeresen frissítetted menetrendet")
 
                     self.refresh_todo.emit(True)
                     
@@ -267,7 +267,7 @@ class ScheduleContent(QWidget, LoggerMixin):
                     self.log.exception("Unexpected error occured during the update %s" % str(e))
                     
                     self.error_label.setVisible(True)
-                    self.error_label.setText(f"Something went wrong")
+                    self.error_label.setText(f"Valami hiba történt")
 
     async def __insert_schedule_for_particular_ship(self,
         boat_id: int,
@@ -278,17 +278,19 @@ class ScheduleContent(QWidget, LoggerMixin):
         ):
 
         try:
-            
+
             await queries.insert_boat_schedule(
                 boat_id = boat_id,
-                location = location,
-                arrived_date = arrival_date,
-                ponton = ponton,
-                leave_date = leave_date
+                schedules = [{
+                    "location": location,
+                    "arrived_date": arrival_date,
+                    "ponton": ponton,
+                    "leave_date": leave_date
+                }]
             )
             
             self.success_label.setVisible(True)
-            self.success_label.setText(f"Data saved successfully")
+            self.success_label.setText(f"Sikeresen rögzítetted az adatokat")
 
             self.refresh_todo.emit(True)
             
@@ -299,7 +301,7 @@ class ScheduleContent(QWidget, LoggerMixin):
             self.log.exception("Unexpected error occured during the insertion %s" % str(e))
             
             self.error_label.setVisible(True)
-            self.error_label.setText(f"Something went wrong")
+            self.error_label.setText(f"Valami hiba történt")
 
     def __set_content(self, new_view: QWidget):
         
@@ -314,4 +316,3 @@ class ScheduleContent(QWidget, LoggerMixin):
         self.stack.setCurrentIndex(index)
         
         self.results_table = new_view
-

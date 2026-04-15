@@ -66,19 +66,23 @@ class AsyncPlaywright(LoggerMixin):
     
         width, height = self.random_viewport()
 
-        self.info_bar.addText("▶▶▶Starting the search on the Marine Traffic website with Playwright Chromium...")
-
         self.playwright = await self.playwright_manager.start()
         
         self.browser_context = await self.playwright.chromium.launch_persistent_context(
             executable_path = str(self.playwright_dir / "chromium" / "chromium-1187" / "chrome-win" / "chrome.exe"),
             user_data_dir = str(self.profile_dir),
-            headless = True,
+            headless = Config.marine_traffic.headless,
             viewport = {"width": width, "height": height},
             user_agent = self.user_agent,
             extra_http_headers = {"Accept-Language": self.accept_lang},
             ignore_https_errors = True,
-            args = ["--start-maximized","--disable-blink-features=AutomationControlled"],
+            args = [
+                "--start-maximized",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--no-first-run",
+            ],
         )
     
     async def ensure_page(self) -> Page:
@@ -107,11 +111,7 @@ class AsyncPlaywright(LoggerMixin):
 
             if self.page.url != "about:blank":
                 
-                await self.page.close()
-                
-                self.page = None
-                
-                raise Exception()
+                await self.page.goto("about:blank", wait_until = "commit")
         
         except Exception:
             
@@ -123,6 +123,8 @@ class AsyncPlaywright(LoggerMixin):
                 
             except Exception:
                 pass
+            
+            self.browser_context = None
             
             await self.build_browser_context()
             
@@ -159,7 +161,7 @@ class AsyncPlaywright(LoggerMixin):
                     
                     try:
                         
-                        await popup_locator.wait_for(timeout = timeout)
+                        await popup_locator.wait_for(timeout = 500)
                         
                         self.log.debug("Consent popup found in iframe: %s" % frame.url)
                         
@@ -178,7 +180,7 @@ class AsyncPlaywright(LoggerMixin):
 
             agree_button = popup_locator.locator("button.css-1yp8yiu")
             
-            self.info_bar.addText("🔔 Cookie consent popup detected, trying to accept it...")
+            self.info_bar.addText("🔔 Cookie consent felugró ablak észlelve, megpróbálom elfogadni...")
             
             try:
                 
@@ -186,7 +188,7 @@ class AsyncPlaywright(LoggerMixin):
                 
                 self.log.info("Consent dialog detected and 'AGREE' button clicked successfully")
                 
-                self.info_bar.addText("✅ Cookie consent accepted")
+                self.info_bar.addText("✅ Cookie consent elfogadva")
                 
             except TimeoutError:
                 
@@ -213,7 +215,7 @@ class AsyncPlaywright(LoggerMixin):
             
             await toolbar_input.press("Enter")
 
-            self.info_bar.addText("🔍 Search started for ship: %s" % ship_name)
+            self.info_bar.addText("🔍 Keresés indítva a hajóra: %s" % ship_name)
 
             results_container = self.page.locator("div.MuiContainer-root").filter(has = self.page.locator("div.MuiListItem-root"))
     
@@ -223,7 +225,7 @@ class AsyncPlaywright(LoggerMixin):
             
             await self.collect_results(results_container, timeout = timeout)
             
-            self.info_bar.addText("Finished the search: found a total of %d results for the name '%s'◀◀◀" % (
+            self.info_bar.addText("Végeztem a kereséssel: összesen %d találatot találtam a '%s' névvel◀◀◀" % (
                 len(self.marine_traffic_list),
                 ship_name
                 )
@@ -231,13 +233,13 @@ class AsyncPlaywright(LoggerMixin):
             
         except TimeoutError:
             
-            self.info_bar.addText("ℹ️ No results found or the results did not load in time")
+            self.info_bar.addText("ℹ️ Nincs találat vagy a találatok nem töltődtek be időben")
             
             self.log.warning("No search results found or they did not load in time")
             
         except Exception as e:
             
-            self.info_bar.addText("❌ Error while searching for ship: %s" % str(e))
+            self.info_bar.addText("❌ Hiba a hajó keresésénél: %s" % str(e))
             
             self.log.exception("Error during ship search: %s" % str(e))
     
@@ -258,11 +260,7 @@ class AsyncPlaywright(LoggerMixin):
                 
                 self.log.info("No pagination detected -> collecting single page results")
                 
-                list_items = await results_container.locator("div.MuiListItem-root").all()
-                
-                for item in list_items:
-                    
-                    await self._pharse_list_item(item)
+                await self._extract_page_items(results_container)
                     
                 return
 
@@ -282,32 +280,9 @@ class AsyncPlaywright(LoggerMixin):
 
             while current_page <= total_pages:
 
-                list_items = await results_container.locator("div.MuiListItem-root").all()
+                count = await self._extract_page_items(results_container)
                 
-                self.log.debug("Found %d list items on page %d" % (
-                    len(list_items), 
-                    current_page
-                    )
-                )
-
-                for idx, list_item in enumerate(list_items, start = 1):
-                    
-                    try:
-                        await self._pharse_list_item(list_item)
-                        
-                        self.log.debug("Parsed item %d on page %d" % (
-                            idx, 
-                            current_page
-                            )
-                        )
-                        
-                    except Exception as e:
-                        
-                        self.log.warning("Item parse failed on page %d: %s" % (
-                            current_page, 
-                            str(e)
-                            )
-                        )
+                self.log.debug("Extracted %d items from page %d" % (count, current_page))
 
                 if current_page >= total_pages:
                     break
@@ -334,64 +309,59 @@ class AsyncPlaywright(LoggerMixin):
             
             self.log.exception("Error collecting paginated results: %s" % (str(e)))
     
-    async def _pharse_list_item(self, list_item: Locator):
+    async def _extract_page_items(self, results_container: Locator) -> int:
+        """Extract all list items from the current page using a single JS evaluate call."""
+        
+        raw_items = await results_container.evaluate("""(container) => {
+            const items = container.querySelectorAll('.MuiListItem-root');
+            return Array.from(items).map(item => {
+                const aTags = item.querySelectorAll('a');
+                let hrefValue = null, viewOnMapHref = null, shipId = null;
+                
+                if (aTags.length > 0) {
+                    hrefValue = aTags[0].getAttribute('href');
+                    if (hrefValue) {
+                        const m = hrefValue.match(/shipid:(\\d+)/);
+                        shipId = m ? m[1] : null;
+                    }
+                    if (aTags.length > 1) {
+                        viewOnMapHref = aTags[1].getAttribute('href');
+                    }
+                }
+                
+                const aTag = aTags.length > 0 ? aTags[0] : item;
+                const h5 = aTag.querySelector('h5');
+                const h5Text = h5 ? h5.innerText : '';
+                
+                const flagSpan = aTag.querySelector("span[role='img']");
+                const flagValue = flagSpan ? flagSpan.getAttribute('aria-label') : null;
+                
+                const p = aTag.querySelector('p');
+                const infoText = p ? p.innerText : '';
+                
+                const allPTags = aTag.querySelectorAll('p');
+                const fullInfoText = Array.from(allPTags).map(el => el.innerText).join(', ');
+                
+                return { h5Text, hrefValue, viewOnMapHref, shipId, flagValue, infoText: fullInfoText || infoText };
+            });
+        }""")
+        
+        for raw in raw_items:
+            
+            self._parse_raw_item(raw)
+        
+        return len(raw_items)
+    
+    def _parse_raw_item(self, raw: dict):
+        """Parse a raw JS-extracted dict into MarineTrafficData."""
         
         try:
             
-            a_tags = await list_item.locator("a").all()
-
-            a_tag = None
-            href_value = None
-            view_on_map_href = None
-            ship_id = None
-
-            if len(a_tags) > 0:
-      
-                a_tag = a_tags[0]
-                
-                href_value = await a_tag.get_attribute("href")
-                
-                if href_value is not None:
-                    
-                    ship_id_match = re.search(r"shipid:(\d+)", href_value)
-                    
-                    if ship_id_match is not None:
-                        
-                        ship_id = ship_id_match.group(1)
-                        
-                    else:
-                        
-                        ship_id = None
-
-                if len(a_tags) > 1:
-                    
-                    view_on_map_href = await a_tags[1].get_attribute("href")
-
-            if a_tag is None:
-                
-                a_tag = list_item
-            
-            h5_elements = await a_tag.locator("h5").all()
-            
-            h5_text = await h5_elements[0].inner_text() if len(h5_elements) > 0 else ""
+            h5_text = raw.get("h5Text", "")
             
             ship_name_cleaned = re.sub(r"(\(.*?\)|\[.*?\])", "", h5_text).strip()
-
-            flag_spans = await a_tag.locator("span[role='img']").all()
             
-            flag_value = None
-            
-            if len(flag_spans) > 0:
-                
-                flag_attr = await flag_spans[0].get_attribute("aria-label")
-                
-                if flag_attr is not None:
-                    
-                    flag_value = flag_attr.lower()
-
-            p_elements = await a_tag.locator("p").all()
-            
-            info_text = await p_elements[0].inner_text() if len(p_elements) > 0 else ""
+            info_text = raw.get("infoText", "")
 
             type_match = re.search(r"Type:\s*([^,]+)", info_text)
             
@@ -413,29 +383,32 @@ class AsyncPlaywright(LoggerMixin):
             
             if ex_name_match is not None:
                 
-                ex_name_value = ex_name_match.group(1).strip()
-                
-                ship_name_cleaned = f"{ship_name_cleaned} Ex name: {ex_name_value}"
+                ship_name_cleaned = f"{ship_name_cleaned} Ex name: {ex_name_match.group(1).strip()}"
+
+            ship_id = raw.get("shipId")
+            
+            flag_value: str = raw.get("flagValue")
 
             self.marine_traffic_list.append(MarineTrafficData(
                 id = None,
                 ship_name = ship_name_cleaned,
-                more_deatails_href = href_value,
-                view_on_map_href = view_on_map_href,
-                ship_id = int(ship_id) if ship_id is not None else None,
+                more_deatails_href = raw.get("hrefValue"),
+                view_on_map_href = raw.get("viewOnMapHref"),
+                ship_id = int(ship_id) if ship_id else None,
                 type_name = type_value,
-                flag = flag_value,
-                mmsi = int(mmsi_value) if mmsi_value is not None else None,
-                call_sign = call_sign_value,
-                imo = int(imo_value) if imo_value is not None else None,
+                flag = flag_value.lower() if flag_value else None,
+                mmsi = int(mmsi_value) if mmsi_value else None,
+                callsign = call_sign_value,
+                imo = int(imo_value) if imo_value else None,
                 reported_destination = None,
-                matched_destination = None
+                matched_destination = None,
+                position_received = None
                 )
             )
 
         except Exception as e:
             
-            self.log.exception("Error parsing list item: %s" % str(e))
+            self.log.warning("Failed to parse raw item: %s" % str(e))
     
     async def _extract_reported_time_and_location(self):
         
@@ -451,7 +424,7 @@ class AsyncPlaywright(LoggerMixin):
             location = location_match.group(1).strip() if location_match is not None else None
             reported = reported_match.group(1).strip() if reported_match is not None else None
             
-            self.info_bar.addText("📍 Last known position: %s - reported: %s" % (
+            self.info_bar.addText("📍 Utolsó helyzet: %s – jelentve: %s" % (
                 location, 
                 reported
                 )
@@ -466,4 +439,117 @@ class AsyncPlaywright(LoggerMixin):
         except Exception as e:
             
             self.log.exception("Failed extracting summary location/time: %s" % str(e))
+
+    async def scrape_single_vessel_details(self, item: MarineTrafficData) -> MarineTrafficData:
+        """
+        Visit a single vessel's detail page and extract missing fields 
+        (callsign, reported_destination, matched_destination, position_received, etc.)
+        """
+        
+        field_label = {
+            "flag": "Flag",
+            "mmsi": "MMSI",
+            "callsign": "Call sign",
+            "imo": "IMO",
+            "type_name": "General vessel type",
+            "reported_destination": "Reported destination",
+            "matched_destination": "Matched destination",
+            "position_received": "Position received",
+        }
+        
+        if item.more_deatails_href is None:
+            return item
+        
+        detail_url = Config.marine_traffic.base_url + item.more_deatails_href
+        
+        self.info_bar.addText("🔍 %s részletes adatainak lekérése..." % item.ship_name)
+        
+        response = await self.page.goto(
+            url = detail_url,
+            wait_until = "domcontentloaded"
+        )
+        
+        if response is None or response.status != 200:
+            
+            self.log.warning("Detail page returned status %s for %s" % (
+                response.status if response else "None", 
+                item.ship_name
+            ))
+            
+            return item
+        
+        await self.handle_cookies_banner()
+        
+        ais_found = False
+        
+        try:
+            
+            await self.page.wait_for_selector("#vesselDetails_aisInfoSection", timeout = 8000)
+            
+            ais_found = True
+            
+        except Exception:
+            
+            self.log.debug("AIS section not found for %s on first attempt, retrying..." % item.ship_name)
+        
+        if not ais_found:
+            
+            response = await self.page.goto(
+                url = detail_url,
+                wait_until = "domcontentloaded"
+            )
+            
+            if response is not None and response.status == 200:
+                
+                try:
+                    
+                    await self.page.wait_for_selector("#vesselDetails_aisInfoSection", timeout = 8000)
+                    
+                except Exception:
+                    
+                    self.log.debug("AIS section not found for %s after retry, trying with available data" % item.ship_name)
+        
+        missing_fields = {
+            field: label for field, label in field_label.items()
+            if getattr(item, field, None) is None
+        }
+        
+        if len(missing_fields) > 0:
+            
+            extracted = await self.page.evaluate("""(labels) => {
+                const result = {};
+                for (const [field, label] of Object.entries(labels)) {
+                    const th = Array.from(document.querySelectorAll('th'))
+                        .find(el => el.textContent.trim() === label);
+                    if (th) {
+                        const td = th.nextElementSibling;
+                        if (td) {
+                            const firstText = td.childNodes[0];
+                            result[field] = firstText ? firstText.textContent.trim() : td.innerText.trim();
+                        }
+                    }
+                }
+                return result;
+            }""", missing_fields)
+            
+            for field, value in extracted.items():
+                
+                if value and value != "-":
+                    
+                    self.log.debug("Found data for '%s' on %s: %s" % (field, item.ship_name, value))
+                    
+                    setattr(item, field, value)
+        
+        self.log.debug("Detail scrape done for %s: callsign=%s, reported_dest=%s, matched_dest=%s, pos_received=%s" % (
+            item.ship_name,
+            item.callsign,
+            item.reported_destination,
+            item.matched_destination,
+            item.position_received
+            )
+        )
+        
+        self.info_bar.addText("✅ %s adatai kinyerve" % item.ship_name)
+        
+        return item
         

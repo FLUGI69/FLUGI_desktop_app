@@ -1,4 +1,4 @@
-﻿from sqlalchemy import insert, update
+from sqlalchemy import insert, update
 from datetime import datetime
 
 from db.async_query_base.async_query_base import AsyncQueryBase 
@@ -32,8 +32,8 @@ class insert_tenant(AsyncQueryBase):
                     tenant_quantity = tenant_quantity
                 )
 
-                note = "Rental period expired for %s. Rented tool: %s (ID: %s). \
-                    Rental period cost: %s HUF" % (
+                note = "Lejárt %s bérlési időpontja. Bérelt szerszám: %s (ID: %s). \
+                    Bérlési időszak költsége: %s HUF" % (
                         tenant_name,
                         item_name,
                         str(item_id),
@@ -48,8 +48,8 @@ class insert_tenant(AsyncQueryBase):
                     tenant_quantity = tenant_quantity
                 )
                 
-                note = "Rental period expired for %s. Rented device: %s (ID: %s). \
-                    Rental period cost: %s HUF" % (
+                note = "Lejárt %s bérlési időpontja. Bérelt berendezés: %s (ID: %s). \
+                    Bérlési időszak költsége: %s HUF" % (
                         tenant_name,
                         item_name,
                         str(item_id),

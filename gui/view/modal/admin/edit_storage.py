@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 
 from PyQt6.QtWidgets import (
@@ -26,7 +26,7 @@ class EditStorageModal(QDialog, LoggerMixin):
         
         self._future = None
         
-        self.setWindowTitle("Edit storage")
+        self.setWindowTitle("Raktár módosítás")
         
         self.setModal(True)
         
@@ -40,7 +40,7 @@ class EditStorageModal(QDialog, LoggerMixin):
         
         self.setObjectName("EditStorageModal")
         
-        self.label_name = QLabel("Name:")
+        self.label_name = QLabel("Név:")
         self.input_name = QLineEdit()
         self.input_name.setObjectName("input_unit")
         self.input_name.setFixedHeight(35)
@@ -128,7 +128,7 @@ class EditStorageModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -144,7 +144,7 @@ class EditStorageModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -182,4 +182,3 @@ class EditStorageModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

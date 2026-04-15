@@ -3,33 +3,26 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 
 from utils.dc.marine_traffic.vessel_position import VesselPosition
-from utils.dc.marine_traffic.harbor import Harbor
 
 class MapModal(QDialog):
     
     def __init__(self,
         vessel: VesselPosition,
-        nearest_harbor: Harbor,
-        parent = None,
-        distance_km: float | None = None,
-        nearest_name: str | None = None
+        place_name: str | None = None,
+        parent = None
         ):
     
         super().__init__(parent)
         
         self.vessel = vessel
         
-        self.nearest_harbor = nearest_harbor
-        
-        self.distance_km = distance_km
-        
-        self.nearest_name = nearest_name
+        self.place_name = place_name
         
         self.__init_view()
         
     def __init_view(self):
         
-        self.setWindowTitle("Map")
+        self.setWindowTitle("Térkép")
         
         self.resize(800, 600)  
 
@@ -45,19 +38,15 @@ class MapModal(QDialog):
 
     def load_map(self):
         
-        if self.vessel is not None and self.nearest_harbor is not None:
+        if self.vessel is not None:
             
-            if self.nearest_harbor.name is not None:
+            if self.place_name is not None:
                 
-                tooltip_text = f"{self.vessel.ship_name} current location: {self.nearest_harbor.name}"
-                
-            elif self.distance_km is not None and self.nearest_name is not None:
-                
-                tooltip_text = f"{self.vessel.ship_name} currently at {self.nearest_name} km from the port of {self.distance_km:.2f} km away"
+                tooltip_text = f"{self.vessel.ship_name} jelenlegi tartózkodási helye: {self.place_name}"
             
             else:
                 
-                tooltip_text = f"{self.vessel.ship_name} location unknown"
+                tooltip_text = f"{self.vessel.ship_name} pozíciója: {self.vessel.lat:.5f}, {self.vessel.lon:.5f}"
                 
                 
             html = f"""

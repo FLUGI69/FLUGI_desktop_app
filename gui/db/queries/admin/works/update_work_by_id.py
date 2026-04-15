@@ -16,6 +16,7 @@ class update_work_by_id(AsyncQueryBase):
     async def query(self, 
         work_id: int,
         leader: str | None,
+        order_date: datetime | None,
         description: str | None,
         prev_transfered: bool,
         transfered: bool,
@@ -39,6 +40,7 @@ class update_work_by_id(AsyncQueryBase):
             await self.update_work_by_id(
                 id = work_id,
                 leader = leader,
+                order_date = order_date,
                 description = description,
                 prev_transfered = prev_transfered,
                 transfered = transfered,
@@ -108,6 +110,7 @@ class update_work_by_id(AsyncQueryBase):
     async def update_work_by_id(self,
         id: int,
         leader: str | None,
+        order_date: datetime | None,
         description: str | None,
         prev_transfered: bool,
         transfered: bool,
@@ -121,6 +124,10 @@ class update_work_by_id(AsyncQueryBase):
         if leader is not None:
             
             values_to_update["leader"] = leader
+            
+        if order_date is not None:
+            
+            values_to_update["order_date"] = order_date    
             
         if description is not None:
             

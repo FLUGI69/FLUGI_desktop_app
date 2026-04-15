@@ -39,7 +39,7 @@ class MahartPortsTable(QTableWidget, LoggerMixin):
         
         self.setColumnCount(6)
         
-        self.setHorizontalHeaderLabels(["", "Name", "Port", "Arrival", "Pontoon", "Departure"])
+        self.setHorizontalHeaderLabels(["", "Név", "Kikötő", "Érkezés", "Ponton", "Távozás"])
         
         self.setColumnWidth(0, 40)  
 
@@ -55,53 +55,73 @@ class MahartPortsTable(QTableWidget, LoggerMixin):
 
     def load_data(self, ship_infos: t.List[ShipInfo]):
         
-        self.log.debug("Preparing to load the following boat records into the table: %s" % str(ship_infos))
+        self.log.debug("Preparing to load %d boat records into the table (first 10: %s)" % (len(ship_infos) if isinstance(ship_infos, list) else 0, str(ship_infos[:10]) if isinstance(ship_infos, list) else "[]"))
         
-        self.clearContents()
+        self.setUpdatesEnabled(False)
         
-        self.setRowCount(0)
+        try:
         
-        row_index = 0
+            self.clearContents()
+            
+            self.setRowCount(0)
 
-        if isinstance(ship_infos, list) and all(isinstance(row, ShipInfo) for row in ship_infos):
-    
-            for row_index, row in enumerate(ship_infos):
-
-                self.insertRow(row_index)
-
-                checkbox = QCheckBox()
-                checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                checkbox.setProperty("ship_info_data", row)
+            if isinstance(ship_infos, list) and all(isinstance(row, ShipInfo) for row in ship_infos):
                 
-                checkbox_widget = QWidget()
-                
-                layout = QHBoxLayout(checkbox_widget)
-                layout.addWidget(checkbox)
-                layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout.setContentsMargins(0, 0, 0, 0)
-                
-                checkbox_widget.setLayout(layout)
-                
-                self.setCellWidget(row_index, 0, checkbox_widget)
+                self.setRowCount(len(ship_infos))
 
-                fields = [
-                    row.name if row.name != "" else "N/A",
-                    row.port if row.port != "" else "N/A",
-                    row.arrival_date.strftime(Config.time.timeformat) if row.arrival_date else "N/A",
-                    row.ponton if row.ponton != "" else "N/A",
-                    row.departure_date.strftime(Config.time.timeformat) if row.departure_date else "N/A",
-                ]
+                for row_index, row in enumerate(ship_infos):
 
-                for col_index, value in enumerate(fields, start = 1):
+                    checkbox = QCheckBox()
+                    checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                    checkbox.setProperty("ship_info_data", row)
                     
-                    item = QTableWidgetItem(value)
-                    item.setForeground(Qt.GlobalColor.white)
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    checkbox_widget = QWidget()
                     
-                    self.setItem(row_index, col_index, item)
+                    layout = QHBoxLayout(checkbox_widget)
+                    layout.addWidget(checkbox)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    checkbox_widget.setLayout(layout)
+                    
+                    self.setCellWidget(row_index, 0, checkbox_widget)
 
-                row_index += 1
+                    fields = [
+                        row.name if row.name != "" else "N/A",
+                        row.port if row.port != "" else "N/A",
+                        row.arrival_date.strftime(Config.time.timeformat) if row.arrival_date else "N/A",
+                        row.ponton if row.ponton != "" else "N/A",
+                        row.departure_date.strftime(Config.time.timeformat) if row.departure_date else "N/A",
+                    ]
+
+                    for col_index, value in enumerate(fields, start = 1):
+                    
+                        item = QTableWidgetItem(value)
+                        item.setForeground(Qt.GlobalColor.white)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    
+                        self.setItem(row_index, col_index, item)
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
                 
+    def uncheck_all(self):
+        
+        for row_index in range(self.rowCount()):
+            
+            checkbox_widget = self.cellWidget(row_index, 0)
+            
+            if checkbox_widget is None:
+                
+                continue
+            
+            checkbox = checkbox_widget.findChild(QCheckBox)
+            
+            if checkbox is not None:
+                
+                checkbox.setChecked(False)
+
     def get_selected_ship_data(self) -> list[ShipInfo]:
         
         selected_boats = []

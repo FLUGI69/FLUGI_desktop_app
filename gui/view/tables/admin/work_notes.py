@@ -65,59 +65,73 @@ class AdminEditWorkNotes(QTableWidget, LoggerMixin):
 
     def load_data(self, admin_boat_data: list[AdminEditWorkData]):
         
-        self.log.debug("Preparing to load the following boat records into the table: %s" % str(admin_boat_data))
+        self.log.debug("Preparing to load %d work note records into the table (first 10: %s)" % (len(admin_boat_data) if isinstance(admin_boat_data, list) else 0, str(admin_boat_data[:10]) if isinstance(admin_boat_data, list) else "[]"))
         
-        self.clearContents()
+        self.blockSignals(True)
+        self.setUpdatesEnabled(False)
         
-        self.setRowCount(0)
-
-        if isinstance(admin_boat_data, list) and all(isinstance(row, AdminEditWorkData) for row in admin_boat_data):
+        try:
+        
+            self.clearContents()
             
-            for _, work in enumerate(admin_boat_data):
+            self.setRowCount(0)
+
+            if isinstance(admin_boat_data, list) and all(isinstance(row, AdminEditWorkData) for row in admin_boat_data):
                 
-                if work.status is not None:
+                all_notes = []
+                
+                for work in admin_boat_data:
                     
-                    if len(work.status.notes) > 0:
+                    if work.status is not None and len(work.status.notes) > 0:
                         
-                        for row_index, note in enumerate(work.status.notes):
-                            
-                            self.insertRow(row_index)
-                            
-                            fields = [
-                                note.id,
-                                note.note,
-                                note.created_at
-                            ]
-
-                            for col_index, value in enumerate(fields):
+                        all_notes.extend(work.status.notes)
+                
+                if len(all_notes) > 0:
                     
-                                cell = QTableWidgetItem(str(value))
-                                cell.setForeground(Qt.GlobalColor.white)
-                                cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.setRowCount(len(all_notes))
+                    
+                    for row_index, note in enumerate(all_notes):
+                        
+                        fields = [
+                            note.id,
+                            note.note,
+                            note.created_at
+                        ]
 
-                            
-                                if col_index == 1:
-                                    
-                                    cell.setFlags(
-                                        Qt.ItemFlag.ItemIsSelectable |
-                                        Qt.ItemFlag.ItemIsEnabled |
-                                        Qt.ItemFlag.ItemIsEditable
-                                    )
-                                    
-                                    cell.setData(Qt.ItemDataRole.UserRole, note)
-                                    
-                                    self._prev_note_values[note.id] = note.note
-                                    
-                                else:
-                                    
-                                    cell.setFlags(
-                                        Qt.ItemFlag.ItemIsSelectable |
-                                        Qt.ItemFlag.ItemIsEnabled
-                                    )
+                        for col_index, value in enumerate(fields):
+                
+                            cell = QTableWidgetItem(str(value))
+                            cell.setForeground(Qt.GlobalColor.white)
+                            cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                                self.setItem(row_index, col_index, cell)
-                            
-                            self.resizeRowsToContents()
+                        
+                            if col_index == 1:
+                                
+                                cell.setFlags(
+                                    Qt.ItemFlag.ItemIsSelectable |
+                                    Qt.ItemFlag.ItemIsEnabled |
+                                    Qt.ItemFlag.ItemIsEditable
+                                )
+                                
+                                cell.setData(Qt.ItemDataRole.UserRole, note)
+                                
+                                self._prev_note_values[note.id] = note.note
+                                
+                            else:
+                                
+                                cell.setFlags(
+                                    Qt.ItemFlag.ItemIsSelectable |
+                                    Qt.ItemFlag.ItemIsEnabled
+                                )
+
+                            self.setItem(row_index, col_index, cell)
+                    
+                    self.resizeRowsToContents()
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
+            self.blockSignals(False)
                             
     def table_cell_changed(self, item: QTableWidgetItem):
 

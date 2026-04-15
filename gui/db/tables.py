@@ -19,6 +19,8 @@ from sqlalchemy.orm import relationship, foreign
 from utils.enums.ship_type_enum import ShipTypeEnum
 from utils.enums.storage_item_type_enum import StorageItemTypeEnum
 from utils.enums.tax_number_type_enum import TaxNumberTypeEnum
+from utils.enums.hun_price_tier_enum import HunPriceTierEnum
+from utils.enums.hun_price_category_enum import HunPriceCategoryEnum
 from db.db import MySQLDatabase
 
 TableBase = MySQLDatabase.declarative_base("example_db")
@@ -190,6 +192,30 @@ class example_db:
         travel_time_sundays = Column(DECIMAL(12, 2), nullable = True, comment = "Travel time on Sunday and holiday +100%")
         
         accommodation = Column(DECIMAL(12, 2), nullable = True, comment = "Accommodation")
+        
+    class other_work_prices_hun(TableBase):
+        
+        id = Column(BigInteger, autoincrement = True, primary_key = True)
+        
+        travel_budapest = Column(DECIMAL(12, 2), nullable = True, comment = "Travel within Budapest area per km")
+        
+        travel_outside_km = Column(DECIMAL(12, 2), nullable = True, comment = "Travel outside Budapest / abroad per km")
+        
+        tiers = relationship("other_work_prices_hun_tier", back_populates = "hun_prices", cascade = "all, delete-orphan", lazy = "selectin")
+    
+    class other_work_prices_hun_tier(TableBase):
+        
+        id = Column(BigInteger, autoincrement = True, primary_key = True)
+        
+        hun_prices_id = Column(BigInteger, ForeignKey("other_work_prices_hun.id", ondelete = "CASCADE"), nullable = False)
+        
+        category = Column(Enum(HunPriceCategoryEnum, native_enum = False), nullable = False, comment = "Category")
+        
+        tier = Column(Enum(HunPriceTierEnum, native_enum = False), nullable = False, comment = "Pricing tier")
+        
+        price = Column(DECIMAL(12, 2), nullable = False, comment = "Price (HUF)")
+        
+        hun_prices = relationship("other_work_prices_hun", back_populates = "tiers")
     
     class client(TableBase):
         
@@ -731,6 +757,20 @@ class example_db:
         token_id = Column(BigInteger, ForeignKey("google_token.id", ondelete = "CASCADE"), primary_key = True)
         
         scope_id = Column(BigInteger, ForeignKey("scope.id", ondelete = "CASCADE"), primary_key = True)
+        
+        created_at = Column(DateTime, default = func.now(), nullable = False, comment = "Creation timestamp")
+        
+        updated_at = Column(DateTime, default = func.now(), onupdate = func.now(), nullable = False, comment = "Last modification timestamp")
+        
+    class otp_schedule(TableBase):
+        
+        id = Column(BigInteger, autoincrement = True, primary_key = True)
+        
+        scheduled_at = Column(DateTime, nullable = False, comment = "When to schedule")
+        
+        executed = Column(Boolean, default = False, comment = "Executed")
+        
+        executed_at = Column(DateTime, nullable = True, comment = "When executed")
         
         created_at = Column(DateTime, default = func.now(), nullable = False, comment = "Creation timestamp")
         

@@ -126,7 +126,7 @@ class CustomCalendar(QCalendarWidget, LoggerMixin):
             
         else:
             
-            self.setCursor(Qt.CursorShape.PricerowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def hitTest(self, pos: QPoint):
 

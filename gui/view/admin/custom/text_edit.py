@@ -11,6 +11,7 @@ class ChatTextEdit(QTextEdit):
         
         super().__init__(parent)
         
+        self.setAcceptRichText(False)
         self.btn_callback = btn_callback 
 
     def keyPressEvent(self, event):

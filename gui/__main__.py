@@ -1,3 +1,21 @@
+import os
+import sys
+
+if os.name == "nt":
+    
+    try:
+        
+        _real_stderr_fd = os.dup(2)
+        _devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        
+        os.dup2(_devnull_fd, 2)
+        os.close(_devnull_fd)
+        
+        sys.stderr = os.fdopen(_real_stderr_fd, "w", closefd = False)
+        
+    except OSError:
+        pass
+
 from interfaces import Init
 from interfaces import Interfaces
 

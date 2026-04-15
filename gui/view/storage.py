@@ -1,4 +1,4 @@
-﻿import os
+import os
 from qasync import asyncSlot
 import asyncio
 import typing as t
@@ -19,10 +19,15 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QLabel,
     QTabBar, 
-    QSizePolicy
+    QSizePolicy,
+    QDialog,
+    QDialogButtonBox,
+    QSpinBox,
+    QFormLayout,
+    QDateEdit
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QTimer
-from PyQt6.QtGui import QIcon, QDesktopServices
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QTimer, QSize, QDate
+from PyQt6.QtGui import QIcon, QDesktopServices, QCursor
 
 from config import Config
 from utils.logger import LoggerMixin
@@ -90,29 +95,43 @@ class StorageView(QWidget, LoggerMixin):
         
         self.emit_result_list = None
 
-        self.storage_lock = asyncio.Lock()
-        
         self.current_time = datetime.now(Config.time.timezone_utc)
         
         self.reminder_worker = main_window.reminder_worker
         
-        self.material_cache_service = MaterialCacheService(main_window.redis_client)
+        self.material_cache_service = MaterialCacheService(
+            main_window.redis_client,
+            main_window.app.storage_lock
+        )
         
-        self.tools_cache_service = ToolsCacheService(main_window.redis_client)
+        self.tools_cache_service = ToolsCacheService(
+            main_window.redis_client,
+            main_window.app.storage_lock
+        )
         
-        self.devices_cache_service = DevicesCacheService(main_window.redis_client)
+        self.devices_cache_service = DevicesCacheService(
+            main_window.redis_client,
+            main_window.app.storage_lock
+        )
         
-        self.returnable_cache_service = ReturnablePackagingCacheService(main_window.redis_client)
+        self.returnable_cache_service = ReturnablePackagingCacheService(
+            main_window.redis_client,
+            main_window.app.storage_lock
+        )
         
         self.confirm_action_modal = ConfirmActionModal(self)
 
-        self.materials_table = MaterialsTable()
+        self.materials_table = MaterialsTable(utility_calculator = self.utility_calculator)
+        self.materials_table.header_clicked.connect(self._on_table_header_clicked)
         
-        self.tools_table = ToolsTable()
+        self.tools_table = ToolsTable(utility_calculator = self.utility_calculator)
+        self.tools_table.header_clicked.connect(self._on_table_header_clicked)
         
-        self.devices_table = DevicesTable()
+        self.devices_table = DevicesTable(utility_calculator = self.utility_calculator)
+        self.devices_table.header_clicked.connect(self._on_table_header_clicked)
         
-        self.returnable_table = ReturnablePackagingTable()
+        self.returnable_table = ReturnablePackagingTable(utility_calculator = self.utility_calculator)
+        self.returnable_table.header_clicked.connect(self._on_table_header_clicked)
         
         self.work_add_modal = AddWorkItemsModal(self)
         
@@ -138,7 +157,19 @@ class StorageView(QWidget, LoggerMixin):
         
         self.results_table = None
         
+        self._sort_ascending = True
+        
         self.error_labels = {}
+        
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(lambda: self._do_search(self.search_input.text()))
+        
+        self._size_search_timer = QTimer()
+        self._size_search_timer.setSingleShot(True)
+        self._size_search_timer.setInterval(250)
+        self._size_search_timer.timeout.connect(lambda: self._do_size_search(self.search_input_2.text()))
 
         self.__init_view()
         
@@ -155,11 +186,11 @@ class StorageView(QWidget, LoggerMixin):
     
         # Side menu
         self.menu_buttons = {
-            "add_btn": QPushButton("Add to inventory"),
-            "edit_btn": QPushButton("Edit inventory"),
-            "add_work_btn": QPushButton("Add to work"),
-            "qr_print_btn": QPushButton("Print QR code"),
-            "delete_item_btn": QPushButton("Remove item")
+            "add_btn": QPushButton("Készlethez adás"),
+            "edit_btn": QPushButton("Készlet módosítás"),
+            "add_work_btn": QPushButton("Munkához adás"),
+            "qr_print_btn": QPushButton("QR kód nyomtatása"),
+            "delete_item_btn": QPushButton("Tétel eltávolítása")
         }    
         
         menu_layout = QVBoxLayout()
@@ -242,26 +273,36 @@ class StorageView(QWidget, LoggerMixin):
         self.tab_bar.setFixedHeight(50)
         self.tab_bar.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.tab_bar.addTab("Anyagok")      
-        self.tab_bar.addTab("Tools")     
-        self.tab_bar.addTab("Devices")
-        self.tab_bar.addTab("Returnable packaging") 
+        self.tab_bar.addTab("Szerszámok")     
+        self.tab_bar.addTab("Berendezések")
+        self.tab_bar.addTab("Göngyölegek") 
         self.tab_bar.setCurrentIndex(0) 
         self.tab_bar.currentChanged.connect(lambda _, tb = self.tab_bar: self._handle_menu_click(tb))
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search...")
+        self.search_input.setPlaceholderText("Keresés...")
         self.search_input.setObjectName("WarehouseSearchInput")
         self.search_input.textChanged.connect(self._handle_search_input)
 
         self.search_input_2 = QLineEdit()
-        self.search_input_2.setPlaceholderText("Unit search...")
+        self.search_input_2.setPlaceholderText("Mennyiségi egység keresés...")
         self.search_input_2.setObjectName("WarehouseSearchInput")
         self.search_input_2.textChanged.connect(self._handle_size_search_input)
+
+        self.filter_btn = QPushButton()
+        self.filter_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.filter_btn.setFixedHeight(50)
+        self.filter_btn.setObjectName("TrashButton")
+        self.filter_btn.setToolTip("Szűrés beszerzés időpontjára")
+        self.filter_btn.setIcon(StorageView.icon("filter.svg"))
+        self.filter_btn.setIconSize(QSize(25, 25))
+        self.filter_btn.clicked.connect(self._handle_date_filter)
 
         search_layout = QHBoxLayout()
         search_layout.addWidget(self.tab_bar)
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(self.search_input_2)
+        search_layout.addWidget(self.filter_btn)
         
         right_panel.addLayout(search_layout)
 
@@ -300,6 +341,10 @@ class StorageView(QWidget, LoggerMixin):
         QTimer.singleShot(0, lambda: self.data_loaded.emit(item))
     
     def _handle_size_search_input(self, text: str):
+        
+        self._size_search_timer.start()
+    
+    def _do_size_search(self, text: str):
         
         if isinstance(self.results_table, MaterialsTable):
         
@@ -406,6 +451,10 @@ class StorageView(QWidget, LoggerMixin):
             self.results_table.load_data(filtered_cache)
             
     def _handle_search_input(self, text: str):
+        
+        self._search_timer.start()
+    
+    def _do_search(self, text: str):
         
         if isinstance(self.results_table, MaterialsTable):
             
@@ -552,17 +601,17 @@ class StorageView(QWidget, LoggerMixin):
                     data = await self.add_modal.get_form_data()
                     
                     confirm_text = (
-                        f"You are recording the following item:\n\n"
-                        f"Storage:\n{data.storage_id}\n\n"
-                        f"Name:\n{data.name}\n\n"
-                        f"Serial number:\n{data.manufacture_number}\n\n"
-                        f"Quantity:\n{data.quantity:.4f}\n\n"
-                        f"Unit:\n{data.unit}\n\n"
-                        f"Manufacturing year:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Net unit price:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
-                        f"Purchase source:\n{data.purchase_source}\n\n"
-                        f"Purchase date:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Inspection dates:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
+                        f"Következő tételt rögzíted:\n\n"
+                        f"Raktár:\n{data.storage_id}\n\n"
+                        f"Megnevezés:\n{data.name}\n\n"
+                        f"Gyáriszám:\n{data.manufacture_number}\n\n"
+                        f"Mennyiség:\n{data.quantity:.4f}\n\n"
+                        f"Mennyiségi egység:\n{data.unit}\n\n"
+                        f"Gyártási év:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Netto egységár:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
+                        f"Beszerzés forrása:\n{data.purchase_source}\n\n"
+                        f"Beszerzés időpontja:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Ellenörző felülvizsgálatok időpontja:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
                         "Biztosan folytatod?"
                     )
                     
@@ -591,7 +640,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for editing")
                 
-                self.error_labels[sender].setText("Select an item to edit")
+                self.error_labels[sender].setText("Válassz elemet a módosításhoz")
                 self.error_labels[sender].setVisible(True)
                                 
                 return
@@ -600,7 +649,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("Multiple items selected. Only one item can be edited at a time")
                 
-                self.error_labels[sender].setText("Select only one item at a time")
+                self.error_labels[sender].setText("Egyszerre csak egy elemet válassz")
                 self.error_labels[sender].setVisible(True)
                 
                 return
@@ -654,17 +703,17 @@ class StorageView(QWidget, LoggerMixin):
                     )
                     
                     confirm_text = f"""
-                    <br>You are modifying the following data:<br><br>
-                    Name: {name_line}<br>
-                    Quantity: {quantity_line}<br>
-                    Unit: {unit_line}<br>
-                    Net unit price: {price_line}<br>
-                    Storage: {storage_line}<br>
-                    Type / Serial number: {manufacture_number_line}<br>
-                    Manufacturing year: {manufacture_date_line}<br>
+                    <br>Módosítod a következő adatokat:<br><br>
+                    Megnevezés: {name_line}<br>
+                    Mennyiség: {quantity_line}<br>
+                    Mennyiségi egység: {unit_line}<br>
+                    Netto egységár: {price_line}<br>
+                    Raktár: {storage_line}<br>
+                    Típus / Gyáriszám: {manufacture_number_line}<br>
+                    Gyártási év: {manufacture_date_line}<br>
                     Beszerezve: {purchase_source_line}<br>
-                    Purchase date: {purchase_date_line}<br>
-                    Inspection: {inspection_date_line}<br><br>
+                    Beszerzés időpontja: {purchase_date_line}<br>
+                    Ellenörző felülvizsgálat: {inspection_date_line}<br><br>
                     Biztosan folytatod?<br>
                     """
     
@@ -694,30 +743,29 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for adding")
                 
-                self.error_labels[sender].setText("Select items to add")
+                self.error_labels[sender].setText("Válassz elemeket a hozzáadáshoz")
                 self.error_labels[sender].setVisible(True)
             
                 return       
             
             works_query_result = await queries.select_all_works()
-
-            if len(works_query_result) > 0:
             
-                list_works = [
-                    SelectedWorkData(
-                        id = work.id,
-                        boat_id = work.boat_id,
-                        description = work.description,
-                        start_date = work.start_date,
-                        finished_date = work.finished_date,
-                        transfered = work.transfered,
-                        is_contractor = work.is_contractor,
-                        img = work.img,
-                        boat_name = work.boat_name,
-                    ) for work in works_query_result 
-                ]
-                
-                self.work_add_modal.set_works(list_works)
+            works = [
+                SelectedWorkData(
+                    id = row.id,
+                    boat_id = row.boat_id,
+                    description = row.description,
+                    start_date = row.start_date,
+                    finished_date = row.finished_date,
+                    transfered = row.transfered,
+                    is_contractor = row.is_contractor,
+                    boat_name = row.boat.name if row.boat is not None else None
+                ) for row in works_query_result
+            ]
+
+            if len(works) > 0:
+            
+                self.work_add_modal.set_works(works)
                 
                 accepted = await self.work_add_modal.exec_async()
 
@@ -733,11 +781,11 @@ class StorageView(QWidget, LoggerMixin):
                             sender = sender                        
                         )
             
-            if works_query_result == []:
+            if works == []:
                 
                 self.log.warning("Work table is empty, please insert data first")
 
-                self.error_labels[sender].setText("No work found, add data first")
+                self.error_labels[sender].setText("Nincs munka, adj hozzá adatot")
                 self.error_labels[sender].setVisible(True)
         
         elif sender is self.qr_code_btn:
@@ -750,7 +798,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for printing")
                 
-                self.error_labels[sender].setText("Select items to print")
+                self.error_labels[sender].setText("Válassz tételeket a nyomtatáshoz")
                 self.error_labels[sender].setVisible(True)
             
                 return       
@@ -767,7 +815,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for deleting")
                 
-                self.error_labels[sender].setText("Select items to delete")
+                self.error_labels[sender].setText("Válassz tételeket a törléshez")
                 self.error_labels[sender].setVisible(True)
             
                 return   
@@ -796,17 +844,17 @@ class StorageView(QWidget, LoggerMixin):
                     data = await self.add_tools_modal.get_form_data()
                     
                     confirm_text = (
-                        f"You are recording the following item:\n\n"
-                        f"Storage:\n{data.storage_id}\n\n"
-                        f"Name:\n{data.name}\n\n"
-                        f"Type / Serial number:\n{data.manufacture_number}\n\n"
-                        f"Quantity:\n{data.quantity:.4f}\n\n"
-                        f"Manufacturing year:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Commissioning date:\n{data.commissioning_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Net unit price:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
-                        f"Purchase source:\n{data.purchase_source}\n\n"
-                        f"Purchase date:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Inspection dates:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
+                        f"Következő tételt rögzíted:\n\n"
+                        f"Raktár:\n{data.storage_id}\n\n"
+                        f"Megnevezés:\n{data.name}\n\n"
+                        f"Típus / Gyáriszám:\n{data.manufacture_number}\n\n"
+                        f"Mennyiség:\n{data.quantity:.4f}\n\n"
+                        f"Gyártási év:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Üzembe helyezés időpontja:\n{data.commissioning_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Netto egységár:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
+                        f"Beszerzés forrása:\n{data.purchase_source}\n\n"
+                        f"Beszerzés időpontja:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Ellenörző felülvizsgálatok időpontja:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
                         "\n\nBiztosan folytatod?"
                     )
                     
@@ -835,7 +883,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for editing")
                 
-                self.error_labels[sender].setText("Select an item to edit")
+                self.error_labels[sender].setText("Válassz elemet a módosításhoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -844,7 +892,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("Multiple items selected. Only one item can be edited at a time")
                 
-                self.error_labels[sender].setText("Select only one item at a time")
+                self.error_labels[sender].setText("Egyszerre csak egy elemet válassz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -895,22 +943,22 @@ class StorageView(QWidget, LoggerMixin):
                     inspection_date_line = f"{previous_tools.inspection_date.strftime(Config.time.timeformat) if previous_tools.inspection_date is not None else 'N/A'} --> " \
                                         f"{to_data.inspection_date.strftime(Config.time.timeformat) if to_data.inspection_date is not None else 'N/A'}"
 
-                    is_scrap_line = f"{'Yes' if previous_tools.is_scrap else 'No' if previous_tools.is_scrap == False else 'N/A'} --> " \
-                                    f"{'Yes' if to_data.is_scrap else 'No' if to_data.is_scrap == False else 'N/A'}"
+                    is_scrap_line = f"{'Igen' if previous_tools.is_scrap else 'Nem' if previous_tools.is_scrap == False else 'N/A'} --> " \
+                                    f"{'Igen' if to_data.is_scrap else 'Nem' if to_data.is_scrap == False else 'N/A'}"
 
                     confirm_text = f"""
-                    <br>You are modifying the following data:<br><br>
-                    Name: {name_line}<br>
-                    Quantity: {quantity_line}<br>
-                    Storage: {storage_line}<br>
-                    Type / Serial number: {manufacture_number_line}<br>
-                    Manufacturing year: {manufacture_date_line}<br>
-                    Commissioning: {commissioning_date_line}<br>
-                    Net unit price: {price_line}<br>
+                    <br>Módosítod a következő adatokat:<br><br>
+                    Megnevezés: {name_line}<br>
+                    Mennyiség: {quantity_line}<br>
+                    Raktár: {storage_line}<br>
+                    Típus / Gyáriszám: {manufacture_number_line}<br>
+                    Gyártási év: {manufacture_date_line}<br>
+                    Üzembe helyezés: {commissioning_date_line}<br>
+                    Netto egységár: {price_line}<br>
                     Beszerezve: {purchase_source_line}<br>
-                    Purchase date: {purchase_date_line}<br>
-                    Inspection: {inspection_date_line}<br>
-                    Scrap: {is_scrap_line}<br><br>
+                    Beszerzés időpontja: {purchase_date_line}<br>
+                    Ellenörző felülvizsgálat: {inspection_date_line}<br>
+                    Selejt: {is_scrap_line}<br><br>
                     Biztosan folytatod?<br>
                     """
 
@@ -940,7 +988,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for add")
                 
-                self.error_labels[sender].setText("Select a tool to add")
+                self.error_labels[sender].setText("Válassz szerszámot a hozzáadáshoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -949,7 +997,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("Multiple items selected. Only one item can be add at a time")
                 
-                self.error_labels[sender].setText("Select only one item at a time")
+                self.error_labels[sender].setText("Egyszerre csak egy elemet válassz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -964,7 +1012,7 @@ class StorageView(QWidget, LoggerMixin):
                     )
                 )
                 
-                self.error_labels[sender].setText("The item is scrapped!")
+                self.error_labels[sender].setText("A tétel le van selejtezve!")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -981,7 +1029,7 @@ class StorageView(QWidget, LoggerMixin):
                 # print(form_data)
                 
                 confirm_text = (
-                    "You are adding the following data:\n\n"
+                    "Hozzáadod a következő adatokat:\n\n"
                     f"{form_data.quantity:.4f} DB "
                     f"{selected_tools.name if selected_tools.name != '' else 'N/A'} -->\n"
                     f"{str(form_data.tenant_name) if form_data.tenant_name is not None else 'N/A'}\n"
@@ -1017,7 +1065,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for add")
                 
-                self.error_labels[sender].setText("Select items to print")
+                self.error_labels[sender].setText("Válassz tételeket a nyomtatáshoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1034,7 +1082,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for deleting")
                 
-                self.error_labels[sender].setText("Select items to delete")
+                self.error_labels[sender].setText("Válassz tételeket a törléshez")
                 self.error_labels[sender].setVisible(True)
             
                 return   
@@ -1071,17 +1119,17 @@ class StorageView(QWidget, LoggerMixin):
                     data = await self.add_devices_modal.get_form_data()
                     
                     confirm_text = (
-                        f"You are recording the following item:\n\n"
-                        f"Storage:\n{data.storage_id}\n\n"
-                        f"Name:\n{data.name}\n\n"
-                        f"Type / Serial number:\n{data.manufacture_number}\n\n"
-                        f"Quantity:\n{data.quantity}\n\n"
-                        f"Manufacturing year:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Commissioning date:\n{data.commissioning_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Net unit price:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
-                        f"Purchase source:\n{data.purchase_source}\n\n"
-                        f"Purchase date:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Inspection dates:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
+                        f"Következő tételt rögzíted:\n\n"
+                        f"Raktár:\n{data.storage_id}\n\n"
+                        f"Megnevezés:\n{data.name}\n\n"
+                        f"Típus / Gyáriszám:\n{data.manufacture_number}\n\n"
+                        f"Mennyiség:\n{data.quantity}\n\n"
+                        f"Gyártási év:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Üzembe helyezés időpontja:\n{data.commissioning_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Netto egységár:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
+                        f"Beszerzés forrása:\n{data.purchase_source}\n\n"
+                        f"Beszerzés időpontja:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Ellenörző felülvizsgálatok időpontja:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
                         "\n\nBiztosan folytatod?"
                     )
                     
@@ -1110,7 +1158,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for printing")
                 
-                self.error_labels[sender].setText("Select an item to edit")
+                self.error_labels[sender].setText("Válassz elemet a módosításhoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1119,7 +1167,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("Multiple items selected. Only one item can be edited at a time")
                 
-                self.error_labels[sender].setText("Select only one item at a time")
+                self.error_labels[sender].setText("Egyszerre csak egy elemet válassz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1170,22 +1218,22 @@ class StorageView(QWidget, LoggerMixin):
                     inspection_date_line = f"{previous_devices.inspection_date.strftime(Config.time.timeformat) if previous_devices.inspection_date is not None else 'N/A'} --> " \
                                         f"{to_data.inspection_date.strftime(Config.time.timeformat) if to_data.inspection_date is not None else 'N/A'}"
 
-                    is_scrap_line = f"{'Yes' if previous_devices.is_scrap else 'No' if previous_devices.is_scrap == False else 'N/A'} --> " \
-                                    f"{'Yes' if to_data.is_scrap else 'No' if to_data.is_scrap == False else 'N/A'}"
+                    is_scrap_line = f"{'Igen' if previous_devices.is_scrap else 'Nem' if previous_devices.is_scrap == False else 'N/A'} --> " \
+                                    f"{'Igen' if to_data.is_scrap else 'Nem' if to_data.is_scrap == False else 'N/A'}"
 
                     confirm_text = f"""
-                    <br>You are modifying the following data:<br><br>
-                    Name: {name_line}<br>
-                    Quantity: {quantity_line}<br>
-                    Storage: {storage_line}<br>
-                    Type / Serial number: {manufacture_number_line}<br>
-                    Manufacturing year: {manufacture_date_line}<br>
-                    Commissioning: {commissioning_date_line}<br>
-                    Net unit price: {price_line}<br>
+                    <br>Módosítod a következő adatokat:<br><br>
+                    Megnevezés: {name_line}<br>
+                    Mennyiség: {quantity_line}<br>
+                    Raktár: {storage_line}<br>
+                    Típus / Gyáriszám: {manufacture_number_line}<br>
+                    Gyártási év: {manufacture_date_line}<br>
+                    Üzembe helyezés: {commissioning_date_line}<br>
+                    Netto egységár: {price_line}<br>
                     Beszerezve: {purchase_source_line}<br>
-                    Purchase date: {purchase_date_line}<br>
-                    Inspection: {inspection_date_line}<br>
-                    Scrap: {is_scrap_line}<br><br>
+                    Beszerzés időpontja: {purchase_date_line}<br>
+                    Ellenörző felülvizsgálat: {inspection_date_line}<br>
+                    Selejt: {is_scrap_line}<br><br>
                     Biztosan folytatod?<br>
                     """
 
@@ -1215,7 +1263,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for add")
                 
-                self.error_labels[sender].setText("Select a device to add")
+                self.error_labels[sender].setText("Válassz berendezést a hozzáadáshoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1224,7 +1272,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("Multiple items selected. Only one item can be add at a time")
                 
-                self.error_labels[sender].setText("Select only one item at a time")
+                self.error_labels[sender].setText("Egyszerre csak egy elemet válassz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1239,7 +1287,7 @@ class StorageView(QWidget, LoggerMixin):
                     )
                 )
                 
-                self.error_labels[sender].setText("The item is scrapped!")
+                self.error_labels[sender].setText("A tétel le van selejtezve!")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1256,7 +1304,7 @@ class StorageView(QWidget, LoggerMixin):
                 # print(form_data)
                 
                 confirm_text = (
-                    "You are adding the following data:\n\n"
+                    "Hozzáadod a következő adatokat:\n\n"
                     f"{form_data.quantity:.4f} DB "
                     f"{selected_devices.name if selected_devices.name != '' else 'N/A'} -->\n"
                     f"{str(form_data.tenant_name) if form_data.tenant_name is not None else 'N/A'}\n"
@@ -1292,7 +1340,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for printing")
                 
-                self.error_labels[sender].setText("Select items to print")
+                self.error_labels[sender].setText("Válassz tételeket a nyomtatáshoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1309,7 +1357,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for deleting")
                 
-                self.error_labels[sender].setText("Select items to delete")
+                self.error_labels[sender].setText("Válassz tételeket a törléshez")
                 self.error_labels[sender].setVisible(True)
             
                 return   
@@ -1338,16 +1386,16 @@ class StorageView(QWidget, LoggerMixin):
                     data = await self.add_returnable_packaging_modal.get_form_data()
                     
                     confirm_text = (
-                        f"You are recording the following item:\n\n"
-                        f"Storage:\n{data.storage_id}\n\n"
-                        f"Name:\n{data.name}\n\n"
-                        f"Type / Serial number:\n{data.manufacture_number}\n\n"
-                        f"Quantity:\n{data.quantity}\n\n"
-                        f"Manufacturing year:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Net unit price:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
-                        f"Purchase source:\n{data.purchase_source}\n\n"
-                        f"Purchase date:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
-                        f"Inspection dates:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
+                        f"Következő tételt rögzíted:\n\n"
+                        f"Raktár:\n{data.storage_id}\n\n"
+                        f"Megnevezés:\n{data.name}\n\n"
+                        f"Típus / Gyáriszám:\n{data.manufacture_number}\n\n"
+                        f"Mennyiség:\n{data.quantity}\n\n"
+                        f"Gyártási év:\n{data.manufacture_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Netto egységár:\n{data.price:,.2f}".replace(",", ".") + " HUF\n\n"
+                        f"Beszerzés forrása:\n{data.purchase_source}\n\n"
+                        f"Beszerzés időpontja:\n{data.purchase_date.strftime(Config.time.timeformat)}\n\n"
+                        f"Ellenörző felülvizsgálatok időpontja:\n{data.inspection_date.strftime(Config.time.timeformat)}\n"
                         "\n\nBiztosan folytatod?"
                     )
                     
@@ -1376,7 +1424,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for printing")
                 
-                self.error_labels[sender].setText("Select an item to edit")
+                self.error_labels[sender].setText("Válassz elemet a módosításhoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1385,7 +1433,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("Multiple items selected. Only one item can be edited at a time")
                 
-                self.error_labels[sender].setText("Select only one item at a time")
+                self.error_labels[sender].setText("Egyszerre csak egy elemet válassz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1434,16 +1482,16 @@ class StorageView(QWidget, LoggerMixin):
                                         f"{to_data.inspection_date.strftime(Config.time.timeformat) if to_data.inspection_date is not None else 'N/A'}"
 
                     confirm_text = f"""
-                    <br>You are modifying the following data:<br><br>
-                    Name: {name_line}<br>
-                    Quantity: {quantity_line}<br>
-                    Storage: {storage_line}<br>
-                    Type / Serial number: {manufacture_number_line}<br>
-                    Manufacturing year: {manufacture_date_line}<br>
-                    Net unit price: {price_line}<br>
+                    <br>Módosítod a következő adatokat:<br><br>
+                    Megnevezés: {name_line}<br>
+                    Mennyiség: {quantity_line}<br>
+                    Raktár: {storage_line}<br>
+                    Típus / Gyáriszám: {manufacture_number_line}<br>
+                    Gyártási év: {manufacture_date_line}<br>
+                    Netto egységár: {price_line}<br>
                     Beszerezve: {purchase_source_line}<br>
-                    Purchase date: {purchase_date_line}<br>
-                    Inspection: {inspection_date_line}<br><br>
+                    Beszerzés időpontja: {purchase_date_line}<br>
+                    Ellenörző felülvizsgálat: {inspection_date_line}<br><br>
                     Biztosan folytatod?<br>
                     """
 
@@ -1473,7 +1521,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for send back")
                 
-                self.error_labels[sender].setText("Select an item for return")
+                self.error_labels[sender].setText("Válassz itemet a visszaküldéshez")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1487,7 +1535,7 @@ class StorageView(QWidget, LoggerMixin):
                 form_data = self.send_back_modal.get_form_data()
                 # print(form_data)
                 
-                lines = [f"You are returning the packaging ({len(form_data)} db)\n\n"]
+                lines = [f"Vissza küldöd a göngyölegeket ({len(form_data)} db)\n\n"]
                 
                 for item in form_data:
                     
@@ -1526,7 +1574,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for printing")
                 
-                self.error_labels[sender].setText("Select items to print")
+                self.error_labels[sender].setText("Válassz tételeket a nyomtatáshoz")
                 self.error_labels[sender].setVisible(True)
 
                 return
@@ -1543,7 +1591,7 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.log.warning("No item selected for deleting")
                 
-                self.error_labels[sender].setText("Select items to delete")
+                self.error_labels[sender].setText("Válassz tételeket a törléshez")
                 self.error_labels[sender].setVisible(True)
             
                 return   
@@ -1570,12 +1618,12 @@ class StorageView(QWidget, LoggerMixin):
                     zero_quantity = 0.0000
                     
                     if self.utility_calculator.floats_are_equal(data.quantity, zero_quantity) is False:
-                        
+                          
                         await queries.update_returnable_packaging_returned_by_id(
                             id = data.id,
                             quantity = data.quantity
                         )
-                        
+                    
                         await self.returnable_cache_service.clear_cache(Config.redis.cache.returnable_packaging.id)
                         
                         await self.load_cache_data(
@@ -1759,14 +1807,14 @@ class StorageView(QWidget, LoggerMixin):
         
         except ItemCannotBeDeletedWhileRentedError as e:
 
-            self.error_labels[sender].setText(f"In use:\n '{e.items}'")
+            self.error_labels[sender].setText(f"Használatban:\n '{e.items}'")
             self.error_labels[sender].setVisible(True)
             
             self.log.exception(e.message)
             
         except Exception as e:
             
-            self.error_labels[sender].setText("Failed to delete the data")
+            self.error_labels[sender].setText("Nem sikerült törölni az adatokat")
             self.error_labels[sender].setVisible(True)
             
             self.log.exception("Failed to delete items: %s" % str(e))
@@ -1794,15 +1842,15 @@ class StorageView(QWidget, LoggerMixin):
             
             elif isinstance(item, ToolsData):
                 
-                return "Tool"
+                return "Szerszám"
             
             elif isinstance(item, DeviceData):
                 
-                return "Device"
+                return "Berendezés"
             
             elif isinstance(item, ReturnablePackagingData):
                 
-                return "Packaging"
+                return "Göngyöleg"
             
             else:
                 
@@ -1863,7 +1911,7 @@ class StorageView(QWidget, LoggerMixin):
             <html>
             <head>
             <style>
-                body {{ margin: 1.5cm; font-family: Priceial, sans-serif; }}
+                body {{ margin: 1.5cm; font-family: Arial, sans-serif; }}
                 table {{ width: 100%; border-collapse: collapse; font-size: 10pt; }}
                 th, td {{ border: 1px solid black; padding: 4px; text-align: center; word-wrap: break-word; }}
                 th {{ background-color: #cccccc; }}
@@ -1917,11 +1965,11 @@ class StorageView(QWidget, LoggerMixin):
                     
                     dropdown_items.append((formatted_str, data.id))
                 
-                self.emit_result_list = dropdown_items if len(dropdown_items) > 0 else [("No displayable data", None)]
+                self.emit_result_list = dropdown_items if len(dropdown_items) > 0 else [("Nincs megjeleníthető adat", None)]
         
         else:
             
-            self.emit_result_list = [("No displayable data", None)]
+            self.emit_result_list = [("Nincs megjeleníthető adat", None)]
             
             self.log.info("Expected StorageCacheData with items, got %s" % (str(storage_cache_data)))
         
@@ -1940,38 +1988,20 @@ class StorageView(QWidget, LoggerMixin):
             )
             
             try:
-                
-                async with self.storage_lock:
                     
-                    await queries.insert_tenant(
-                        item_id = selected_item.id,
-                        item_name = selected_item.name,
-                        item_type = form_data.item_type,
-                        item_quantity = selected_item.quantity, #from storage
-                        tenant_quantity = form_data.quantity, #to lease 
-                        tenant_name = form_data.tenant_name.capitalize() if form_data.tenant_name is not None else None,
-                        rental_start = form_data.rental_start.replace(second = 0, microsecond = 0) if form_data.rental_start else None,
-                        rental_end = form_data.rental_end.replace(second = 0, microsecond = 0) if form_data.rental_end else None,
-                        rental_price = form_data.rental_price,
-                        is_daily_price = False if form_data.rental_end else True
-                    )
-                    
-                tenants_content = self.admin_view.get_tenants_content()
-                
-                await tenants_content.tenant_datatable_cache.clear_cache(Config.redis.cache.tenants.id)
-                
-                await tenants_content.load_cache_data(                    
-                    cache_id = Config.redis.cache.tenants.id,
-                    exp = Config.redis.cache.tenants.exp,
-                    update_rental_cache = True
+                await queries.insert_tenant(
+                    item_id = selected_item.id,
+                    item_name = selected_item.name,
+                    item_type = form_data.item_type,
+                    item_quantity = selected_item.quantity, #from storage
+                    tenant_quantity = form_data.quantity, #to lease 
+                    tenant_name = form_data.tenant_name.capitalize() if form_data.tenant_name is not None else None,
+                    rental_start = form_data.rental_start.replace(second = 0, microsecond = 0) if form_data.rental_start else None,
+                    rental_end = form_data.rental_end.replace(second = 0, microsecond = 0) if form_data.rental_end else None,
+                    rental_price = form_data.rental_price,
+                    is_daily_price = False if form_data.rental_end else True
                 )
-                
-                calendar_content = self.main_window.get_calendar_content()
-            
-                await calendar_content.reminders_cache.clear_cache(calendar_content._create_cache_id())
 
-                await calendar_content.load_cache_data()  
-                
                 if isinstance(selected_item, ToolsData):
                                     
                     await self.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
@@ -1994,11 +2024,27 @@ class StorageView(QWidget, LoggerMixin):
 
                     self.log.info("Devices table refreshed after insert")
 
+                tenants_content = self.admin_view.get_tenants_content()
+                
+                await tenants_content.tenant_datatable_cache.clear_cache(Config.redis.cache.tenants.id)
+                
+                await tenants_content.load_cache_data(                    
+                    cache_id = Config.redis.cache.tenants.id,
+                    exp = Config.redis.cache.tenants.exp,
+                    update_rental_cache = True
+                )
+                
+                calendar_content = self.main_window.get_calendar_content()
+            
+                await calendar_content.reminders_cache.clear_cache(calendar_content._create_cache_id())
+
+                await calendar_content.load_cache_data()  
+
                 self.error_labels[sender].setVisible(False)
                 
             except Exception as e:
                 
-                self.error_labels[sender].setText("Failed to save the data")
+                self.error_labels[sender].setText("Nem sikerült rögzíteni az adatot")
                 self.error_labels[sender].setVisible(True)
                 
                 self.log.exception("Failed to insert tenant data: %s" % str(e))
@@ -2058,27 +2104,25 @@ class StorageView(QWidget, LoggerMixin):
             if isinstance(data, MaterialData):
                 
                 try:
-                    
-                    async with self.storage_lock:
                         
-                        await queries.insert_material_data(
-                            storage_id = data.storage_id,
-                            name = data.name,
-                            manufacture_number = data.manufacture_number,
-                            quantity = data.quantity,
-                            unit = data.unit,
-                            manufacture_date = data.manufacture_date,
-                            price = data.price,
-                            purchase_source = data.purchase_source,
-                            purchase_date = data.purchase_date,
-                            inspection_date = data.inspection_date,
-                            is_deleted = data.is_deleted,
-                            deleted_date = data.deleted_date,
-                            uuid = data.uuid
-                        )
+                    await queries.insert_material_data(
+                        storage_id = data.storage_id,
+                        name = data.name,
+                        manufacture_number = data.manufacture_number,
+                        quantity = data.quantity,
+                        unit = data.unit,
+                        manufacture_date = data.manufacture_date,
+                        price = data.price,
+                        purchase_source = data.purchase_source,
+                        purchase_date = data.purchase_date,
+                        inspection_date = data.inspection_date,
+                        is_deleted = data.is_deleted,
+                        deleted_date = data.deleted_date,
+                        uuid = data.uuid
+                    )
 
                     await self.material_cache_service.clear_cache(Config.redis.cache.material.id)
-                    
+                
                     await self.load_cache_data(
                         cache_id = Config.redis.cache.material.id, 
                         exp = Config.redis.cache.material.exp
@@ -2090,7 +2134,7 @@ class StorageView(QWidget, LoggerMixin):
 
                 except Exception as e:
                     
-                    self.error_labels[sender].setText("Failed to save the data")
+                    self.error_labels[sender].setText("Nem sikerült rögzíteni az adatot")
                     self.error_labels[sender].setVisible(True)
                     
                     self.log.exception("Failed to insert material data: %s" % str(e))
@@ -2102,24 +2146,23 @@ class StorageView(QWidget, LoggerMixin):
             elif isinstance(data, ToolsData):
                 
                 try:
-                    async with self.storage_lock:
                         
-                        await queries.insert_tools_data(
-                            storage_id = data.storage_id,
-                            name = data.name,
-                            manufacture_number = data.manufacture_number,
-                            quantity = data.quantity,
-                            manufacture_date = data.manufacture_date,
-                            price = data.price,
-                            commissioning_date = data.commissioning_date,
-                            purchase_source = data.purchase_source,
-                            purchase_date = data.purchase_date,
-                            inspection_date = data.inspection_date,
-                            is_scrap = True if data.is_scrap == True else False,
-                            is_deleted = data.is_deleted,
-                            deleted_date = data.deleted_date,
-                            uuid = data.uuid
-                        )
+                    await queries.insert_tools_data(
+                        storage_id = data.storage_id,
+                        name = data.name,
+                        manufacture_number = data.manufacture_number,
+                        quantity = data.quantity,
+                        manufacture_date = data.manufacture_date,
+                        price = data.price,
+                        commissioning_date = data.commissioning_date,
+                        purchase_source = data.purchase_source,
+                        purchase_date = data.purchase_date,
+                        inspection_date = data.inspection_date,
+                        is_scrap = True if data.is_scrap == True else False,
+                        is_deleted = data.is_deleted,
+                        deleted_date = data.deleted_date,
+                        uuid = data.uuid
+                    )
 
                     await self.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
                     
@@ -2134,7 +2177,7 @@ class StorageView(QWidget, LoggerMixin):
 
                 except Exception as e:
                     
-                    self.error_labels[sender].setText("Failed to save the data")
+                    self.error_labels[sender].setText("Nem sikerült rögzíteni az adatot")
                     self.error_labels[sender].setVisible(True)
                     
                     self.log.exception("Failed to insert tools data: %s" % str(e))
@@ -2146,24 +2189,23 @@ class StorageView(QWidget, LoggerMixin):
             elif isinstance(data, DeviceData):
                 
                 try:
-                    async with self.storage_lock:
                         
-                        await queries.insert_devices_data(
-                            storage_id = data.storage_id,
-                            name = data.name,
-                            manufacture_number = data.manufacture_number,
-                            quantity = data.quantity,
-                            manufacture_date = data.manufacture_date,
-                            price = data.price,
-                            commissioning_date = data.commissioning_date,
-                            purchase_source = data.purchase_source,
-                            inspection_date = data.inspection_date,
-                            purchase_date = data.purchase_date,
-                            is_scrap = True if data.is_scrap == True else False,
-                            is_deleted = data.is_deleted,
-                            deleted_date = data.deleted_date,
-                            uuid = data.uuid
-                        )
+                    await queries.insert_devices_data(
+                        storage_id = data.storage_id,
+                        name = data.name,
+                        manufacture_number = data.manufacture_number,
+                        quantity = data.quantity,
+                        manufacture_date = data.manufacture_date,
+                        price = data.price,
+                        commissioning_date = data.commissioning_date,
+                        purchase_source = data.purchase_source,
+                        inspection_date = data.inspection_date,
+                        purchase_date = data.purchase_date,
+                        is_scrap = True if data.is_scrap == True else False,
+                        is_deleted = data.is_deleted,
+                        deleted_date = data.deleted_date,
+                        uuid = data.uuid
+                    )
 
                     await self.devices_cache_service.clear_cache(Config.redis.cache.devices.id)
                     
@@ -2178,7 +2220,7 @@ class StorageView(QWidget, LoggerMixin):
 
                 except Exception as e:
                     
-                    self.error_labels[sender].setText("Failed to save the data")
+                    self.error_labels[sender].setText("Nem sikerült rögzíteni az adatot")
                     self.error_labels[sender].setVisible(True)
                     
                     self.log.exception("Failed to insert devices data: %s" % str(e))
@@ -2190,24 +2232,23 @@ class StorageView(QWidget, LoggerMixin):
             elif isinstance(data, ReturnablePackagingData):
                 
                 try:
-                    async with self.storage_lock:
-                        
-                        await queries.insert_returnable_data( 
-                            storage_id = data.storage_id,
-                            name = data.name,
-                            manufacture_number = data.manufacture_number,
-                            quantity = data.quantity,
-                            manufacture_date = data.manufacture_date,
-                            price = data.price,
-                            purchase_source = data.purchase_source,
-                            inspection_date = data.inspection_date,
-                            purchase_date = data.purchase_date,
-                            returned_date = data.returned_date,
-                            is_returned = data.is_returned,
-                            is_deleted = data.is_deleted,
-                            deleted_date = data.deleted_date,
-                            uuid = data.uuid
-                        )
+
+                    await queries.insert_returnable_data( 
+                        storage_id = data.storage_id,
+                        name = data.name,
+                        manufacture_number = data.manufacture_number,
+                        quantity = data.quantity,
+                        manufacture_date = data.manufacture_date,
+                        price = data.price,
+                        purchase_source = data.purchase_source,
+                        inspection_date = data.inspection_date,
+                        purchase_date = data.purchase_date,
+                        returned_date = data.returned_date,
+                        is_returned = data.is_returned,
+                        is_deleted = data.is_deleted,
+                        deleted_date = data.deleted_date,
+                        uuid = data.uuid
+                    )
 
                     await self.returnable_cache_service.clear_cache(Config.redis.cache.returnable_packaging.id)
                     
@@ -2215,14 +2256,14 @@ class StorageView(QWidget, LoggerMixin):
                         cache_id = Config.redis.cache.returnable_packaging.id, 
                         exp = Config.redis.cache.returnable_packaging.exp
                     )
-                    
+                
                     self.error_labels[sender].setVisible(False)
                     
                     self.log.info("Returnable packaging table refreshed after insert")
 
                 except Exception as e:
                     
-                    self.error_labels[sender].setText("Failed to save the data")
+                    self.error_labels[sender].setText("Nem sikerült rögzíteni az adatot")
                     self.error_labels[sender].setVisible(True)
                     
                     self.log.exception("Failed to insert devices data: %s" % str(e))
@@ -2259,22 +2300,20 @@ class StorageView(QWidget, LoggerMixin):
                     new_price = to_data.price
                     
                     try:
-                        
-                        async with self.storage_lock:
                                 
-                            await queries.update_material_data(
-                                id = from_data.id,
-                                inspection_date = to_data.inspection_date,
-                                storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
-                                name = to_data.name if to_data.name is not None else None,
-                                manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
-                                quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
-                                unit = to_data.unit if to_data.unit is not None else None,
-                                manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
-                                price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
-                                purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
-                                purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
-                            )
+                        await queries.update_material_data(
+                            id = from_data.id,
+                            inspection_date = to_data.inspection_date,
+                            storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
+                            name = to_data.name if to_data.name is not None else None,
+                            manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
+                            quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
+                            unit = to_data.unit if to_data.unit is not None else None,
+                            manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
+                            price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
+                            purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
+                            purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
+                        )
 
                         await self.material_cache_service.clear_cache(Config.redis.cache.material.id)
                         
@@ -2282,14 +2321,14 @@ class StorageView(QWidget, LoggerMixin):
                             cache_id = Config.redis.cache.material.id, 
                             exp = Config.redis.cache.material.exp
                         )
-                        
+                    
                         self.error_labels[sender].setVisible(False)
                         
                         self.log.info("material table refreshed after update")
 
                     except Exception as e:
                         
-                        self.error_labels[sender].setText("Failed to update the data")
+                        self.error_labels[sender].setText("Nem sikerült frissíteni az adatot")
                         self.error_labels[sender].setVisible(True)
                         
                         self.log.exception("Failed to update material data: %s" % str(e))
@@ -2318,22 +2357,20 @@ class StorageView(QWidget, LoggerMixin):
                         new_price = to_data.price
                         
                         try:
-                            
-                            async with self.storage_lock:
                                 
-                                await queries.update_tools_data(
-                                    id = from_data.id,
-                                    inspection_date = to_data.inspection_date,
-                                    storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
-                                    name = to_data.name if to_data.name is not None else None,
-                                    quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
-                                    manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
-                                    manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
-                                    commissioning_date = to_data.commissioning_date if to_data.commissioning_date is not None else None,
-                                    price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
-                                    purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
-                                    purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
-                                )
+                            await queries.update_tools_data(
+                                id = from_data.id,
+                                inspection_date = to_data.inspection_date,
+                                storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
+                                name = to_data.name if to_data.name is not None else None,
+                                quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
+                                manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
+                                manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
+                                commissioning_date = to_data.commissioning_date if to_data.commissioning_date is not None else None,
+                                price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
+                                purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
+                                purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
+                            )
 
                             await self.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
                             
@@ -2348,7 +2385,7 @@ class StorageView(QWidget, LoggerMixin):
 
                         except Exception as e:
                             
-                            self.error_labels[sender].setText("Failed to update the data")
+                            self.error_labels[sender].setText("Nem sikerült frissíteni az adatot")
                             self.error_labels[sender].setVisible(True)
                             
                             self.log.exception("Failed to update tools data: %s" % str(e))
@@ -2360,26 +2397,24 @@ class StorageView(QWidget, LoggerMixin):
                     elif to_data.is_scrap is True:
                         
                         try:
-                            
-                            async with self.storage_lock:
                                 
-                                await queries.insert_tools_is_scrap(
-                                    storage_id = from_data.storage_id,
-                                    name = from_data.name,
-                                    manufacture_number = from_data.manufacture_number,
-                                    quantity = to_data.quantity,
-                                    manufacture_date = from_data.manufacture_date,
-                                    price = from_data.price,
-                                    commissioning_date = from_data.commissioning_date,
-                                    purchase_source = from_data.purchase_source,
-                                    purchase_date = from_data.purchase_date,
-                                    inspection_date = to_data.inspection_date,
-                                    is_scrap = to_data.is_scrap,
-                                    previous_quantity = from_data.quantity,
-                                    is_deleted = from_data.is_deleted,
-                                    deleted_date = from_data.deleted_date,
-                                    uuid = from_data.uuid
-                                )
+                            await queries.insert_tools_is_scrap(
+                                storage_id = from_data.storage_id,
+                                name = from_data.name,
+                                manufacture_number = from_data.manufacture_number,
+                                quantity = to_data.quantity,
+                                manufacture_date = from_data.manufacture_date,
+                                price = from_data.price,
+                                commissioning_date = from_data.commissioning_date,
+                                purchase_source = from_data.purchase_source,
+                                purchase_date = from_data.purchase_date,
+                                inspection_date = to_data.inspection_date,
+                                is_scrap = to_data.is_scrap,
+                                previous_quantity = from_data.quantity,
+                                is_deleted = from_data.is_deleted,
+                                deleted_date = from_data.deleted_date,
+                                uuid = from_data.uuid
+                            )
 
                             await self.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
                             
@@ -2394,14 +2429,14 @@ class StorageView(QWidget, LoggerMixin):
                         
                         except ValueError as e:
                             
-                            self.error_labels[sender].setText("You entered an invalid quantity")
+                            self.error_labels[sender].setText("Hibás mennyiséget adtál meg")
                             self.error_labels[sender].setVisible(True)
                             
                             self.log.warning("Failed to update tools data: %s" % str(e))
                                                     
                         except Exception as e:
                             
-                            self.error_labels[sender].setText("Failed to update the data")
+                            self.error_labels[sender].setText("Nem sikerült frissíteni az adatot")
                             self.error_labels[sender].setVisible(True)
                             
                             self.log.exception("Failed to update tools data: %s" % str(e))
@@ -2430,22 +2465,20 @@ class StorageView(QWidget, LoggerMixin):
                             
                             new_quantity = to_data.quantity
                             new_price = to_data.price
-                            
-                            async with self.storage_lock:
                                 
-                                await queries.update_devices_data(
-                                    id = from_data.id,
-                                    inspection_date = to_data.inspection_date,
-                                    storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
-                                    name = to_data.name if to_data.name is not None else None,
-                                    quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
-                                    manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
-                                    manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
-                                    commissioning_date = to_data.commissioning_date if to_data.commissioning_date is not None else None,
-                                    price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
-                                    purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
-                                    purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
-                                )
+                            await queries.update_devices_data(
+                                id = from_data.id,
+                                inspection_date = to_data.inspection_date,
+                                storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
+                                name = to_data.name if to_data.name is not None else None,
+                                quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
+                                manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
+                                manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
+                                commissioning_date = to_data.commissioning_date if to_data.commissioning_date is not None else None,
+                                price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
+                                purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
+                                purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
+                            )
 
                             await self.devices_cache_service.clear_cache(Config.redis.cache.devices.id)
                             
@@ -2460,7 +2493,7 @@ class StorageView(QWidget, LoggerMixin):
 
                         except Exception as e:
                             
-                            self.error_labels[sender].setText("Failed to update the data")
+                            self.error_labels[sender].setText("Nem sikerült frissíteni az adatot")
                             self.error_labels[sender].setVisible(True)
                             
                             self.log.exception("Failed to update devices data: %s" % str(e))
@@ -2472,26 +2505,24 @@ class StorageView(QWidget, LoggerMixin):
                     elif to_data.is_scrap is True:
                         
                         try:
-                            
-                            async with self.storage_lock:
                                 
-                                await queries.insert_devices_is_scrap(
-                                    storage_id = from_data.storage_id,
-                                    name = from_data.name,
-                                    manufacture_number = from_data.manufacture_number,
-                                    quantity = to_data.quantity,
-                                    manufacture_date = from_data.manufacture_date,
-                                    price = from_data.price,
-                                    commissioning_date = from_data.commissioning_date,
-                                    purchase_source = from_data.purchase_source,
-                                    purchase_date = from_data.purchase_date,
-                                    inspection_date = to_data.inspection_date,
-                                    is_scrap = to_data.is_scrap,
-                                    is_deleted = from_data.is_deleted,
-                                    deleted_date = from_data.deleted_date,
-                                    previous_quantity = from_data.quantity,
-                                    uuid = from_data.uuid
-                                )
+                            await queries.insert_devices_is_scrap(
+                                storage_id = from_data.storage_id,
+                                name = from_data.name,
+                                manufacture_number = from_data.manufacture_number,
+                                quantity = to_data.quantity,
+                                manufacture_date = from_data.manufacture_date,
+                                price = from_data.price,
+                                commissioning_date = from_data.commissioning_date,
+                                purchase_source = from_data.purchase_source,
+                                purchase_date = from_data.purchase_date,
+                                inspection_date = to_data.inspection_date,
+                                is_scrap = to_data.is_scrap,
+                                is_deleted = from_data.is_deleted,
+                                deleted_date = from_data.deleted_date,
+                                previous_quantity = from_data.quantity,
+                                uuid = from_data.uuid
+                            )
 
                             await self.tools_cache_service.clear_cache(Config.redis.cache.tools.id)
                             
@@ -2506,14 +2537,14 @@ class StorageView(QWidget, LoggerMixin):
                         
                         except ValueError as e:
                             
-                            self.error_labels[sender].setText("You entered an invalid quantity")
+                            self.error_labels[sender].setText("Hibás mennyiséget adtál meg")
                             self.error_labels[sender].setVisible(True)
                             
                             self.log.warning("Failed to update device data: %s" % str(e))
                         
                         except Exception as e:
                             
-                            self.error_labels[sender].setText("Failed to update the data")
+                            self.error_labels[sender].setText("Nem sikerült frissíteni az adatot")
                             self.error_labels[sender].setVisible(True)
                             
                             self.log.exception("Failed to update device data: %s" % str(e))
@@ -2540,21 +2571,19 @@ class StorageView(QWidget, LoggerMixin):
                             
                             new_quantity = to_data.quantity
                             new_price = to_data.price
-                            
-                            async with self.storage_lock:
                                 
-                                await queries.update_returnable_data(
-                                    id = from_data.id,
-                                    inspection_date = to_data.inspection_date,
-                                    storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
-                                    name = to_data.name if to_data.name is not None else None,
-                                    manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
-                                    manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
-                                    quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
-                                    price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
-                                    purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
-                                    purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
-                                )
+                            await queries.update_returnable_data(
+                                id = from_data.id,
+                                inspection_date = to_data.inspection_date,
+                                storage_id = to_data.storage_id if to_data.storage_id != from_data.storage_id else None,
+                                name = to_data.name if to_data.name is not None else None,
+                                manufacture_number = to_data.manufacture_number if to_data.manufacture_number is not None else None,
+                                manufacture_date = to_data.manufacture_date if to_data.manufacture_date is not None else None,
+                                quantity = new_quantity if self.utility_calculator.floats_are_equal(current_quantity, new_quantity) is False else None,
+                                price = new_price if self.utility_calculator.floats_are_equal(current_price, new_price) is False else None,
+                                purchase_source = to_data.purchase_source if to_data.purchase_source is not None else None,
+                                purchase_date = to_data.purchase_date if to_data.purchase_date is not None else None
+                            )
 
                             await self.returnable_cache_service.clear_cache(Config.redis.cache.returnable_packaging.id)
                             
@@ -2569,7 +2598,7 @@ class StorageView(QWidget, LoggerMixin):
 
                         except Exception as e:
                             
-                            self.error_labels[sender].setText("Failed to update the data")
+                            self.error_labels[sender].setText("Nem sikerült frissíteni az adatot")
                             self.error_labels[sender].setVisible(True)
                             
                             self.log.exception("Failed to update returnable data: %s" % str(e))
@@ -2583,7 +2612,7 @@ class StorageView(QWidget, LoggerMixin):
         selected_work_items: list, 
         sender: QPushButton
         ):
-        #TODO: Review when work assignment changes are complete - insert work accessories will fail!
+        #TODO: átnézni ha kész a munához adás változtatások miatt insert work ccessories le fog halni!
         if isinstance(selected_work, SelectedWorkData) and isinstance(selected_work_items, list) \
             and all(isinstance(item, MaterialData) for item in selected_work_items):
             
@@ -2593,7 +2622,7 @@ class StorageView(QWidget, LoggerMixin):
             )
             
             confirm_text = (
-                "The following data will be added:\n\n"
+                "A következő adatok lesznek hozzáadva:\n\n"
                 f"{description_list} "
                 "\n\nBiztosan folytatod?"
             )
@@ -2611,14 +2640,12 @@ class StorageView(QWidget, LoggerMixin):
             part_ids = [item.id for item in selected_work_items]
  
             try:
-                
-                async with self.storage_lock:
                         
-                    await queries.insert_work_accessories(
-                        work_id = selected_work.id,
-                        part_ids = part_ids
-                    )
-                    
+                await queries.insert_work_accessories(
+                    work_id = selected_work.id,
+                    part_ids = part_ids
+                )
+                
                 await self.material_cache_service.clear_cache(Config.redis.cache.material.id)
                 
                 await self.load_cache_data(
@@ -2632,7 +2659,7 @@ class StorageView(QWidget, LoggerMixin):
 
             except Exception as e:
                 
-                self.error_labels[sender].setText("Failed to update the data")
+                self.error_labels[sender].setText("Nem sikerült frissíteni az adatot")
                 self.error_labels[sender].setVisible(True)
                 
                 self.log.exception("Failed to insert Material data: %s" % str(e))
@@ -2641,6 +2668,174 @@ class StorageView(QWidget, LoggerMixin):
                 
                 self.spinner.hide()
                 
+    def __sort_key(self, item, attr_name: str) -> tuple:
+        
+        value = getattr(item, attr_name, None)
+        
+        if value is None:
+            return (1, 0)
+        
+        if isinstance(value, bool):
+            return (0, int(value))
+        
+        if isinstance(value, (int, float)):
+            return (0, value)
+        
+        return (0, str(value).lower())
+    
+    def _handle_date_filter(self):
+        
+        if not hasattr(self, "cache_data") or self.cache_data is None:
+            
+            return
+        
+        now = datetime.now(Config.time.timezone_utc)
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Dátum tartomány kiválasztása")
+        dialog.setStyleSheet(Config.styleSheets.input_dialog)
+        
+        form_layout = QFormLayout(dialog)
+        
+        from_date = QDateEdit(dialog)
+        from_date.setDisplayFormat("yyyy. MMMM dd.")
+        from_date.setDate(QDate(now.year, 1, 1))
+        from_date.setMinimumDate(QDate(2000, 1, 1))
+        from_date.setMaximumDate(QDate(2100, 12, 31))
+        from_date.setCalendarPopup(True)
+        from_date.setFixedHeight(45)
+        
+        to_date = QDateEdit(dialog)
+        to_date.setDisplayFormat("yyyy. MMMM dd.")
+        to_date.setDate(QDate(now.year, now.month, now.day))
+        to_date.setMinimumDate(QDate(2000, 1, 1))
+        to_date.setMaximumDate(QDate(2100, 12, 31))
+        to_date.setCalendarPopup(True)
+        to_date.setFixedHeight(45)
+        
+        form_layout.addRow("tól:", from_date)
+        form_layout.addRow("ig:", to_date)
+        
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            dialog
+        )
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        form_layout.addRow(button_box)
+        
+        accepted = dialog.exec()
+        
+        if accepted:
+            
+            date_from = from_date.date().toPyDate()
+            date_to = to_date.date().toPyDate()
+            
+            self.log.info("Filtering by purchase_date: %s - %s" % (date_from, date_to))
+            
+            filtered_data = []
+            
+            for item in self.cache_data.items:
+                
+                if item is None or item.is_deleted == True:
+                    
+                    continue
+                
+                purchase_date = getattr(item, "purchase_date", None)
+                
+                if purchase_date is not None:
+                    
+                    purchase_date = purchase_date.date() if hasattr(purchase_date, "date") and callable(purchase_date.date) else purchase_date
+                    
+                    if date_from <= purchase_date < date_to:
+                    
+                        filtered_data.append(item)
+            
+            filtered_cache = self.cache_data.__class__(items = filtered_data)
+            
+            self.results_table.load_data(filtered_cache)
+                
+    def _on_table_header_clicked(self, column_index: int):
+        
+        self.log.info("Table header clicked -> column index: %d" % column_index)
+        
+        material_mapper = {
+            1: "name",
+            2: "manufacture_number",
+            3: "quantity",
+            4: "unit",
+            5: "purchase_date",
+            6: "price",
+        }
+        
+        tools_mapper = {
+            1: "name",
+            2: "manufacture_number",
+            3: "quantity",
+            4: "is_scrap",
+            5: "returned",
+            6: "purchase_date",
+            7: "price",
+        }
+        
+        device_mapper = {
+            1: "name",
+            2: "manufacture_number",
+            3: "quantity",
+            4: "is_scrap",
+            5: "returned",
+            6: "purchase_date",
+            7: "price",
+        }
+        
+        returnable_mapper = {
+            1: "name",
+            2: "quantity",
+            3: "manufacture_number",
+            4: "is_returned",
+            5: "purchase_date",
+            6: "price",
+        }
+        
+        mapper = None
+        
+        if isinstance(self.results_table, MaterialsTable):
+            
+            mapper = material_mapper
+            
+        elif isinstance(self.results_table, ToolsTable):
+            
+            mapper = tools_mapper
+            
+        elif isinstance(self.results_table, DevicesTable):
+            
+            mapper = device_mapper
+            
+        elif isinstance(self.results_table, ReturnablePackagingTable):
+            
+            mapper = returnable_mapper
+        
+        if mapper is None or column_index not in mapper:
+            
+            return
+        
+        attr_name = mapper[column_index]
+        
+        filtered_data = [item for item in self.cache_data.items if item is not None and item.is_deleted == False]
+        
+        filtered_data.sort(
+            key = lambda item: self.__sort_key(item, attr_name),
+            reverse = self._sort_ascending == False
+        )
+        
+        self._sort_ascending = False if self._sort_ascending is True else True
+        
+        self.log.info("Sorted by '%s' %s" % (attr_name, "ASC" if not self._sort_ascending else "DESC"))
+        
+        sorted_cache = self.cache_data.__class__(items = filtered_data)
+        
+        self.results_table.load_data(sorted_cache)
+    
     def __set_content(self, new_view: QWidget):
         
         index = self.stack.indexOf(new_view)
@@ -2657,8 +2852,8 @@ class StorageView(QWidget, LoggerMixin):
 
         if isinstance(new_view, MaterialsTable):
             
-            self.search_input_2.setPlaceholderText("Unit search...")
-            self.work_add_btn.setText("Add to work")
+            self.search_input_2.setPlaceholderText("Mennyiségi egység keresés...")
+            self.work_add_btn.setText("Munkához adás")
             
             self.log.debug("Updated search input and work add button for MaterialTable: placeholder: '%s', button_text: '%s'" % (
                 self.search_input_2.placeholderText(),
@@ -2668,8 +2863,8 @@ class StorageView(QWidget, LoggerMixin):
                     
         elif isinstance(new_view, ToolsTable):
             
-            self.search_input_2.setPlaceholderText("Serial number search...")
-            self.work_add_btn.setText("Assign to tenant")
+            self.search_input_2.setPlaceholderText("Gyáriszám keresés...")
+            self.work_add_btn.setText("Bérlőhöz adás")
             
             self.log.debug("Updated search input and work add button for ToolsTable: placeholder: '%s', button_text: '%s'" % (
                 self.search_input_2.placeholderText(),
@@ -2679,8 +2874,8 @@ class StorageView(QWidget, LoggerMixin):
             
         elif isinstance(new_view, DevicesTable):
             
-            self.search_input_2.setPlaceholderText("Serial number search...")
-            self.work_add_btn.setText("Assign to tenant")
+            self.search_input_2.setPlaceholderText("Gyáriszám keresés...")
+            self.work_add_btn.setText("Bérlőhöz adás")
             
             self.log.debug("Updated search input and work add button for DevicesTable: placeholder: '%s', button_text: '%s'" % (
                 self.search_input_2.placeholderText(),
@@ -2690,12 +2885,11 @@ class StorageView(QWidget, LoggerMixin):
             
         elif isinstance(new_view, ReturnablePackagingTable):
             
-            self.search_input_2.setPlaceholderText("Bottle number search...")
-            self.work_add_btn.setText("Return")
+            self.search_input_2.setPlaceholderText("Palackszám keresés...")
+            self.work_add_btn.setText("Visszaküldés")
             
             self.log.debug("Updated search input and work add button for ReturnablePackagingTable: placeholder: '%s', button_text: '%s'" % (
                 self.search_input_2.placeholderText(),
                 self.work_add_btn.text()
                 )
             )
-

@@ -1,4 +1,4 @@
-﻿from PyQt6.QtWidgets import  QFrame, QVBoxLayout, QPushButton
+from PyQt6.QtWidgets import  QFrame, QVBoxLayout, QPushButton
 from PyQt6.QtCore import QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtCore import Qt
 
@@ -15,41 +15,49 @@ class HoverSidebar(QFrame):
         self.setMaximumWidth(self.expanded_width)
         self.resize(self.collapsed_width, self.height())
 
-        self.menu1 = QPushButton("Works")
+        self.menu1 = QPushButton("Munkák")
         self.menu1.setObjectName("DashboardMenuBtn")
         self.menu1.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu2 = QPushButton("Employees")
+        self.menu2 = QPushButton("Alkalmazottak")
         self.menu2.setObjectName("DashboardMenuBtn")
         self.menu2.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu3 = QPushButton("Calendar")
+        self.menu3 = QPushButton("Naptár")
         self.menu3.setObjectName("DashboardMenuBtn")
         self.menu3.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu4 = QPushButton("Schedule")
+        self.menu4 = QPushButton("Menetrend")
         self.menu4.setObjectName("DashboardMenuBtn")
         self.menu4.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu5 = QPushButton("Manage storages")
+        self.menu5 = QPushButton("Raktárak kezelése")
         self.menu5.setObjectName("DashboardMenuBtn")
         self.menu5.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu6 = QPushButton("Tenants")
+        self.menu6 = QPushButton("Bérlők")
         self.menu6.setObjectName("DashboardMenuBtn")
         self.menu6.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu7 = QPushButton("Rental history")
+        self.menu7 = QPushButton("Bérlés előzmények")
         self.menu7.setObjectName("DashboardMenuBtn")
         self.menu7.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu8 = QPushButton("Logins")
+        self.menu8 = QPushButton("Bejelentkezések")
         self.menu8.setObjectName("DashboardMenuBtn")
         self.menu8.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        self.menu9 = QPushButton("Quotation")
+        self.menu9 = QPushButton("Árajánlat")
         self.menu9.setObjectName("DashboardMenuBtn")
         self.menu9.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        self.menu10 = QPushButton("Gyors anyag hozzáadás")
+        self.menu10.setObjectName("DashboardMenuBtn")
+        self.menu10.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        self.menu11 = QPushButton("Flotta megtekintése")
+        self.menu11.setObjectName("DashboardMenuBtn")
+        self.menu11.setCursor(Qt.CursorShape.PointingHandCursor)
         
         self.menu1.hide()
         self.menu2.hide()
@@ -59,6 +67,8 @@ class HoverSidebar(QFrame):
         self.menu6.hide()
         self.menu7.hide()
         self.menu8.hide()
+        self.menu10.hide()
+        self.menu11.hide()
 
         layout = QVBoxLayout()
         layout.addWidget(self.menu1)
@@ -69,6 +79,8 @@ class HoverSidebar(QFrame):
         layout.addWidget(self.menu6)
         layout.addWidget(self.menu7)
         layout.addWidget(self.menu9)
+        layout.addWidget(self.menu10)
+        layout.addWidget(self.menu11)
         layout.addStretch()
         layout.addWidget(self.menu8)
         
@@ -108,6 +120,8 @@ class HoverSidebar(QFrame):
         self.menu6.show()
         self.menu7.show()
         self.menu9.show()
+        self.menu10.show()
+        self.menu11.show()
         self.menu8.show()
 
     def collapse(self):
@@ -125,4 +139,6 @@ class HoverSidebar(QFrame):
         self.menu6.hide()
         self.menu7.hide()
         self.menu9.show()
+        self.menu10.hide()
+        self.menu11.hide()
         self.menu8.hide()

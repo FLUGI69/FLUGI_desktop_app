@@ -1,3 +1,4 @@
+import asyncio
 import json
 import typing as t
 import logging
@@ -9,12 +10,17 @@ from utils.logger import LoggerMixin
 class MarineTrafficCacheService(LoggerMixin):
     
     log: logging.Logger
+        
+    KEY_PREFIX = "marine_search:"
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    def __init__(self, 
+        redis_client: AsyncRedisClient,
+        marine_traffic_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "marine_search:"
+        
+        self.marine_traffic_lock = marine_traffic_lock
 
     def _make_key(self, marine_cache_id: str) -> str:
         
@@ -34,11 +40,12 @@ class MarineTrafficCacheService(LoggerMixin):
            
             wrapped = {
                 marine_cache_id: {
-                    "items": [item.model_dump() for item in raw_data]
+                    "items": [item.model_dump(mode = "json") for item in raw_data]
                 }
             }
             
-            await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+            async with self.marine_traffic_lock:
+                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
             
             self.log.debug("MarineTrafficData cached for %s" % marine_cache_id)
             
@@ -86,4 +93,5 @@ class MarineTrafficCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.marine_traffic_lock:
+            await self.redis_client.clear_cache(key)

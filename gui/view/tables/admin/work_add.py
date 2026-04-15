@@ -39,7 +39,7 @@ class AdminAddTable(QTableWidget, LoggerMixin):
         
         self.setColumnCount(5)
         
-        self.setHorizontalHeaderLabels(["", "Ship", "Flag", "IMO", "MMSI"])
+        self.setHorizontalHeaderLabels(["", "Hajó", "Zászló", "IMO", "MMSI"])
         
         self.setColumnWidth(0, 40)  
 
@@ -55,47 +55,55 @@ class AdminAddTable(QTableWidget, LoggerMixin):
         
     def load_data(self, admin_boat_data: list[AdminBoatData]):
         
-        self.log.debug("Preparing to load the following boat records into the table: %s" % str(admin_boat_data))
+        self.log.debug("Preparing to load %d boat records into the table (first 10: %s)" % (len(admin_boat_data) if isinstance(admin_boat_data, list) else 0, str(admin_boat_data[:10]) if isinstance(admin_boat_data, list) else "[]"))
         
-        self.clearContents()
+        self.setUpdatesEnabled(False)
         
-        self.setRowCount(0)
+        try:
+        
+            if isinstance(admin_boat_data, list) and all(isinstance(row, AdminBoatData) for row in admin_boat_data):
+                
+                self.clearContents()
+                
+                self.setRowCount(0)
+                
+                self.setRowCount(len(admin_boat_data))
 
-        if isinstance(admin_boat_data, list) and all(isinstance(row, AdminBoatData) for row in admin_boat_data):
+                for row_index, row in enumerate(admin_boat_data):
             
-            for row_index, row in enumerate(admin_boat_data):
-                
-                self.insertRow(row_index)
+                    checkbox = QCheckBox()
+                    checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                    checkbox.setProperty("add_table_data", row)
+                    
+                    checkbox_widget = QWidget()
+                    
+                    layout = QHBoxLayout(checkbox_widget)
+                    layout.addWidget(checkbox)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    checkbox_widget.setLayout(layout)
+                    
+                    self.setCellWidget(row_index, 0, checkbox_widget)
+                    
+                    fields = [
+                        row.name if row.name != "" else "N/A",
+                        row.flag if row.flag != "" else "N/A",
+                        row.imo if row.imo is not None else "N/A",
+                        row.mmsi if row.mmsi is not None else "N/A"
+                    ]
+                    
+                    for col_index, value in enumerate(fields, start = 1):
+                    
+                        cell = QTableWidgetItem(str(value))
+                        cell.setForeground(Qt.GlobalColor.white)
+                        cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    
+                        self.setItem(row_index, col_index, cell)
+        
+        finally:
             
-                checkbox = QCheckBox()
-                checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                checkbox.setProperty("add_table_data", row)
-                
-                checkbox_widget = QWidget()
-                
-                layout = QHBoxLayout(checkbox_widget)
-                layout.addWidget(checkbox)
-                layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout.setContentsMargins(0, 0, 0, 0)
-                
-                checkbox_widget.setLayout(layout)
-                
-                self.setCellWidget(row_index, 0, checkbox_widget)
-                
-                fields = [
-                    row.name if row.name != "" else "N/A",
-                    row.flag if row.flag != "" else "N/A",
-                    row.imo if row.imo is not None else "N/A",
-                    row.mmsi if row.mmsi is not None else "N/A"
-                ]
-                
-                for col_index, value in enumerate(fields, start = 1):
-                    
-                    cell = QTableWidgetItem(str(value))
-                    cell.setForeground(Qt.GlobalColor.white)
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    
-                    self.setItem(row_index, col_index, cell)
+            self.setUpdatesEnabled(True)
     
     def get_selected_boat_data(self) -> list[AdminBoatData]:
         

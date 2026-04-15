@@ -41,7 +41,7 @@ class MarineTrafficTable(QTableWidget, LoggerMixin):
         
         self.setColumnCount(8)
         
-        self.setHorizontalHeaderLabels(["", "Name", "Flag", "MMSI", "IMO", "Ship ID", "Type", "Country"])
+        self.setHorizontalHeaderLabels(["", "Név", "Zászló", "MMSI", "IMO", "Hajó ID", "Típus", "Ország"])
         
         self.setColumnWidth(0, 40)
     
@@ -64,74 +64,82 @@ class MarineTrafficTable(QTableWidget, LoggerMixin):
 
     def load_data(self, data: t.List[MarineTrafficData]):
         
-        self.log.debug("Preparing to load the following boat records into the table: %s" % str(data))
+        self.log.debug("Preparing to load %d boat records into the table (first 10: %s)" % (len(data) if isinstance(data, list) else 0, str(data[:10]) if isinstance(data, list) else "[]"))
         
-        self.clearContents()
+        self.setUpdatesEnabled(False)
         
-        self.setRowCount(0)
+        try:
         
-        if isinstance(data, list) and all(isinstance(row, MarineTrafficData) for row in data):
-    
-            for row_index, row in enumerate(data):
+            self.clearContents()
+            
+            self.setRowCount(0)
+            
+            if isinstance(data, list) and all(isinstance(row, MarineTrafficData) for row in data):
+                
+                self.setRowCount(len(data))
 
-                self.insertRow(row_index)
+                for row_index, row in enumerate(data):
                 
-                self.setRowHeight(row_index, 40) 
+                    self.setRowHeight(row_index, 40) 
 
-                checkbox = QCheckBox()
-                checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                checkbox.setProperty("marine_traffic_data", row)
-                
-                checkbox_widget = QWidget()
-                
-                layout = QHBoxLayout(checkbox_widget)
-                layout.addWidget(checkbox)
-                layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout.setContentsMargins(0, 0, 0, 0)
-                
-                checkbox_widget.setLayout(layout)
-                
-                self.setCellWidget(row_index, 0, checkbox_widget)
-                
-                flag_label = QLabel()
-                flag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-                flag_code = row.flag.lower() if row.flag else "nan"
-
-                pixmap = QPixmap(os.path.join(Config.flags.flag_dir, f"{flag_code}.png"))
-
-                if not pixmap.isNull():
-    
-                    scaled_pixmap = pixmap.scaled(QSize(32, 20), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    checkbox = QCheckBox()
+                    checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                    checkbox.setProperty("marine_traffic_data", row)
                     
-                    flag_label.setPixmap(scaled_pixmap)
-               
-                else:
+                    checkbox_widget = QWidget()
                     
-                    self.log.error("Could not load flag image for code %s" % flag_code)
+                    layout = QHBoxLayout(checkbox_widget)
+                    layout.addWidget(checkbox)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    checkbox_widget.setLayout(layout)
+                    
+                    self.setCellWidget(row_index, 0, checkbox_widget)
+                    
+                    flag_label = QLabel()
+                    flag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                self.setCellWidget(row_index, 2, flag_label)
+                    flag_code = row.flag.lower() if row.flag else "nan"
+
+                    pixmap = QPixmap(os.path.join(Config.flags.flag_dir, f"{flag_code}.png"))
+
+                    if not pixmap.isNull():
+        
+                        scaled_pixmap = pixmap.scaled(QSize(32, 20), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        
+                        flag_label.setPixmap(scaled_pixmap)
                 
-                fields = [
-                    row.ship_name if row.ship_name != "" else "N/A",
-                    row.flag if row.flag != "" else "N/A",
-                    str(row.MMSI) if row.MMSI is not None else "N/A",
-                    str(row.IMO) if row.IMO is not None else "N/A",
-                    str(row.ship_id) if row.ship_id is not None else "N/A",
-                    row.type_name.capitalize() if row.type_name != "" else "N/A",
-                    row.country if row.country != "" else "N/A"
-                ]
+                    else:
+                        
+                        self.log.error("Could not load flag image for code %s" % flag_code)
 
-                for col_index, value in enumerate(fields, start = 1):
+                    self.setCellWidget(row_index, 2, flag_label)
                     
-                    if col_index == 2:
-                        continue
+                    fields = [
+                        row.ship_name if row.ship_name != "" else "N/A",
+                        row.flag if row.flag != "" else "N/A",
+                        str(row.MMSI) if row.MMSI is not None else "N/A",
+                        str(row.IMO) if row.IMO is not None else "N/A",
+                        str(row.ship_id) if row.ship_id is not None else "N/A",
+                        row.type_name.capitalize() if row.type_name != "" else "N/A",
+                        row.country if row.country != "" else "N/A"
+                    ]
+
+                    for col_index, value in enumerate(fields, start = 1):
                     
-                    item = QTableWidgetItem(value)
-                    item.setForeground(Qt.GlobalColor.white)
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        if col_index == 2:
+                            continue
                     
-                    self.setItem(row_index, col_index, item)
+                        item = QTableWidgetItem(value)
+                        item.setForeground(Qt.GlobalColor.white)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    
+                        self.setItem(row_index, col_index, item)
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)
                 
     def get_selected_ship_data(self) -> list[MarineTrafficData]:
         

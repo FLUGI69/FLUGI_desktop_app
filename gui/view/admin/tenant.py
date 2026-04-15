@@ -1,4 +1,4 @@
-﻿from qasync import asyncSlot
+from qasync import asyncSlot
 import os
 import asyncio
 import typing as t
@@ -55,16 +55,17 @@ class TenantsContent(QWidget, LoggerMixin):
         self.admin_view = admin
         
         self.spinner = admin.main_window.app.spinner
-        
-        self._lock = asyncio.Lock()
-        
+
         self.datatable_helper = admin.main_window.app.datatable_helper
         
         self.rental_worker = admin.rental_worker
         
         self.tenant_cache_data: AdminTenantsCacheData | None = None
         
-        self.tenant_datatable_cache = AdminTenantsCacheService(admin.redis_client)
+        self.tenant_datatable_cache = AdminTenantsCacheService(
+            redis_client = admin.redis_client,
+            rental_lock = admin.main_window.app.rental_lock
+            )
         
         self.previous_tenants: TenantData | None = None
         
@@ -105,7 +106,7 @@ class TenantsContent(QWidget, LoggerMixin):
         menu_layout.setContentsMargins(0, 0, 0, 0)
 
         self.menu_buttons = {
-            "extend_tenant": QPushButton("Extend")
+            "extend_tenant": QPushButton("Hosszabbítás")
         }        
         
         self.error_label = QLabel()
@@ -156,7 +157,7 @@ class TenantsContent(QWidget, LoggerMixin):
         right_panel.setContentsMargins(0, 0, 0, 0)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search...")
+        self.search_input.setPlaceholderText("Keresés...")
         self.search_input.setObjectName("WarehouseSearchInput")
         self.search_input.textChanged.connect(self._handle_search_input)
 
@@ -164,7 +165,7 @@ class TenantsContent(QWidget, LoggerMixin):
         self.print_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.print_btn.setFixedHeight(50)
         self.print_btn.setObjectName("TrashButton")
-        self.print_btn.setToolTip("Print")
+        self.print_btn.setToolTip("Nyomtatás")
         self.print_btn.setIcon(TenantsContent.icon("printer.svg"))
         self.print_btn.setIconSize(QSize(25, 25))
         self.print_btn.clicked.connect(self.__print_table)
@@ -222,7 +223,7 @@ class TenantsContent(QWidget, LoggerMixin):
                     
                     self.log.warning("No item selected for modify")
                     
-                    self.error_labels[sender].setText("Select an item to edit")
+                    self.error_labels[sender].setText("Válassz elemet a módosításhoz")
                     self.error_labels[sender].setVisible(True)
                                     
                     return
@@ -231,7 +232,7 @@ class TenantsContent(QWidget, LoggerMixin):
                     
                     self.log.warning("Multiple items selected. Only one item can be edited at a time")
                     
-                    self.error_labels[sender].setText("Select only one item at a time")
+                    self.error_labels[sender].setText("Egyszerre csak egy elemet válassz")
                     self.error_labels[sender].setVisible(True)
                     
                     return
@@ -246,10 +247,10 @@ class TenantsContent(QWidget, LoggerMixin):
                     
                     to_data: TenantData = self.extend_tenant_modal.get_form_data()
                     
-                    rental_price_label = "Rental amount / period:" if self.previous_tenants.rental_end is not None else "Rental amount / day:"
+                    rental_price_label = "Bérlés összege / időszak:" if self.previous_tenants.rental_end is not None else "Bérlés összege / nap:"
                     
-                    increased_rental_price_label = "Increased rental amount / period:" \
-                        if self.previous_tenants.rental_end is not None else "Increased rental amount / day:"
+                    increased_rental_price_label = "Növelt bérlés összege / időszak:" \
+                        if self.previous_tenants.rental_end is not None else "Növelt bérlés összege / nap:"
                     
                     price_modified_text = f"{increased_rental_price_label} {to_data.rental_price:,.2f}".replace(",", ".") + " HUF" \
                         if self.previous_tenants.rental_price != to_data.rental_price else ""
@@ -259,21 +260,21 @@ class TenantsContent(QWidget, LoggerMixin):
 
                     if self.previous_tenants.quantity + to_data.quantity == self.previous_tenants.quantity:
                         
-                        rented_quantity_text = "Did not change"
+                        rented_quantity_text = "Nem módosult"
                         
                     else:
                         
                         rented_quantity_text = f"{self.previous_tenants.quantity:.4f} -> {self.previous_tenants.quantity + to_data.quantity:.4f}"
                     
                     confirm_text = (
-                        "Extend rental period:\n\n"
-                        f"Tenant: {to_data.tenant_name}\n"
-                        f"Rented item: {to_data.item_name}\n"
+                        "Bérelt időszak meghosszabbítása:\n\n"
+                        f"Bérlő: {to_data.tenant_name}\n"
+                        f"Bérelt tárgy: {to_data.item_name}\n"
                         f"{rental_price_label} {self.previous_tenants.rental_price:,.2f}".replace(",", ".") + " HUF\n"
-                        f"Rental start: {self.previous_tenants.rental_start}\n\n"
-                        f"Rental end: {rental_end_text} --> "
+                        f"Bérlés kezdete: {self.previous_tenants.rental_start}\n\n"
+                        f"Bérlés vége: {rental_end_text} --> "
                         f"{to_data.rental_end.strftime(Config.time.timeformat) or datetime.now().strftime(Config.time.timeformat)}\n"
-                        f"Rented quantity: {rented_quantity_text}"
+                        f"Bérelt mennyiség: {rented_quantity_text}"
                     )
                     
                     if price_modified_text != "":
@@ -312,38 +313,36 @@ class TenantsContent(QWidget, LoggerMixin):
         )
 
         if to_data is not None and from_data is not None:
-            
-            async with self._lock:
-                
-                try:
-                    
-                    await queries.update_tenant_by_id(
-                        tenant_id = from_data.tenant_id,
-                        item_type = from_data.item_type,
-                        current_quantity = from_data.quantity,
-                        current_rental_start = from_data.rental_start,
-                        current_price = from_data.rental_price,
-                        new_quantity = to_data.quantity,
-                        new_price = to_data.rental_price,
-                        is_daily_price = from_data.is_daily_price,
-                        current_rental_end = from_data.rental_end,
-                        new_rental_end = to_data.rental_end
-                    )
 
-                except RentalPeriodExpiredError as e:
-                    
-                    self.log.warning(e.message)
-                    
-                    self.error_labels[sender].setText("Rental contract expired")
-                    self.error_labels[sender].setVisible(True)
-                    
-                except InsufficientQuantityError as e:
-                    
-                    self.log.warning(e.message)
-                    
-                    self.error_labels[sender].setText("No available quantity")
-                    self.error_labels[sender].setVisible(True)
+            try:
+
+                await queries.update_tenant_by_id(
+                    tenant_id = from_data.tenant_id,
+                    item_type = from_data.item_type,
+                    current_quantity = from_data.quantity,
+                    current_rental_start = from_data.rental_start,
+                    current_price = from_data.rental_price,
+                    new_quantity = to_data.quantity,
+                    new_price = to_data.rental_price,
+                    is_daily_price = from_data.is_daily_price,
+                    current_rental_end = from_data.rental_end,
+                    new_rental_end = to_data.rental_end
+                )
+
+            except RentalPeriodExpiredError as e:
                 
+                self.log.warning(e.message)
+                
+                self.error_labels[sender].setText("Lejárt bérleti szerződés")
+                self.error_labels[sender].setVisible(True)
+                
+            except InsufficientQuantityError as e:
+                
+                self.log.warning(e.message)
+                
+                self.error_labels[sender].setText("Nincs rendelkezésre álló mennyiség")
+                self.error_labels[sender].setVisible(True)
+            
             await self.tenant_datatable_cache.clear_cache(Config.redis.cache.tenants.id)
             
             await self.load_cache_data(
@@ -397,4 +396,3 @@ class TenantsContent(QWidget, LoggerMixin):
         
         self.results_table = new_view
     
-

@@ -44,7 +44,11 @@ class EmailMessagesView(GmailApiView):
             
             parsed_result = self.parse_response(result)
             
-            self.log.debug("ListMessages response: %s" % parsed_result)
+            self.log.debug("ListMessages response: count=%s, first_10_ids=%s, nextPageToken=%s" % (
+                len(parsed_result.messages),
+                [m.id for m in parsed_result.messages[:10]],
+                parsed_result.nextPageToken
+            ))
             
             return parsed_result
             

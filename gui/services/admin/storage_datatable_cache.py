@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -13,11 +14,16 @@ class AdminStorageItemsCacheService(LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    KEY_PREFIX = "storage_items:"
+    
+    def __init__(self, 
+        redis_client: AsyncRedisClient,
+        admin_storage_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "storage_items:"
+        
+        self.admin_storage_lock = admin_storage_lock
 
     def _make_key(self, storage_cache_id: str) -> str:
         
@@ -153,12 +159,13 @@ class AdminStorageItemsCacheService(LoggerMixin):
                 wrapped = {
                     storage_cache_id: {
                         "items": [
-                            {**item.model_dump(), "type": item.__class__.__name__} for item in raw_data
+                            {**item.model_dump(mode = "json"), "type": item.__class__.__name__} for item in raw_data
                         ]
                     }
                 }
                 
-                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+                async with self.admin_storage_lock:
+                    await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
                 
                 self.log.debug("Storage data cached for %s" % storage_cache_id)
                 
@@ -178,4 +185,5 @@ class AdminStorageItemsCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.admin_storage_lock:
+            await self.redis_client.clear_cache(key)

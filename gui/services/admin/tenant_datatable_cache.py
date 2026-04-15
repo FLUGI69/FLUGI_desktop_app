@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -11,11 +12,16 @@ class AdminTenantsCacheService(LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    KEY_PREFIX = "tenant_items:"
+    
+    def __init__(self, 
+        redis_client: AsyncRedisClient, 
+        rental_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "tenant_items:"
+        
+        self.rental_lock = rental_lock
 
     def _make_key(self, tenant_cache_id: str) -> str:
         
@@ -85,12 +91,13 @@ class AdminTenantsCacheService(LoggerMixin):
                 wrapped = {
                     tenant_cache_id: {
                         "items": [
-                            {**item.model_dump(), "type": item.__class__.__name__} for item in raw_data
+                            {**item.model_dump(mode = "json"), "type": item.__class__.__name__} for item in raw_data
                         ]
                     }
                 }
                 
-                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+                async with self.rental_lock:
+                    await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
                 
                 self.log.debug("Tenant data cached for %s" % tenant_cache_id)
                 
@@ -110,4 +117,5 @@ class AdminTenantsCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.rental_lock:
+            await self.redis_client.clear_cache(key)

@@ -8,7 +8,7 @@ import wsgiref.simple_server
 from utils.logger import LoggerMixin
 from .redirect_wsgi_app import CustomRedirectWSGIApp
 
-class ExampleAppFlow(Flow, LoggerMixin):
+class FlugiAppFlow(Flow, LoggerMixin):
     
     log: logging.Logger 
     

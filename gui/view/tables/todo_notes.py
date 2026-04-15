@@ -52,7 +52,7 @@ class TodoNotesTable(QTableWidget, LoggerMixin):
 
     def load_data(self, admin_status_notes: list[AdminWorkStatusNote]):
         
-        self.log.debug("Preparing to load the following boat records into the table: %s" % str(admin_status_notes))
+        self.log.debug("Preparing to load %d note records into the table (first 10: %s)" % (len(admin_status_notes) if isinstance(admin_status_notes, list) else 0, str(admin_status_notes[:10]) if isinstance(admin_status_notes, list) else "[]"))
         
         self.clearContents()
         
@@ -68,7 +68,7 @@ class TodoNotesTable(QTableWidget, LoggerMixin):
             
             self.horizontalHeader().setStretchLastSection(True)
             
-            item = QTableWidgetItem("There are no notes for this work")
+            item = QTableWidgetItem("Nincsenek jegyzetek ehhez a munkához")
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.setItem(0, 0, item)
             
@@ -82,24 +82,32 @@ class TodoNotesTable(QTableWidget, LoggerMixin):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
-        if isinstance(admin_status_notes, list) and all(isinstance(row, AdminWorkStatusNote) for row in admin_status_notes):
-                    
-            for row_idx, note in enumerate(admin_status_notes):
+        self.setUpdatesEnabled(False)
+        
+        try:
+        
+            if isinstance(admin_status_notes, list) and all(isinstance(row, AdminWorkStatusNote) for row in admin_status_notes):
+                
+                self.setRowCount(len(admin_status_notes))
+                        
+                for row_idx, note in enumerate(admin_status_notes):
 
-                self.insertRow(row_idx)
+                    fields = [
+                        note.id,
+                        note.note,
+                        note.created_at
+                    ]
 
-                fields = [
-                    note.id,
-                    note.note,
-                    note.created_at
-                ]
+                    for col_idx, value in enumerate(fields):
 
-                for col_idx, value in enumerate(fields):
+                        cell = QTableWidgetItem(str(value))
+                        cell.setForeground(Qt.GlobalColor.white)
+                        cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                    cell = QTableWidgetItem(str(value))
-                    cell.setForeground(Qt.GlobalColor.white)
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.setItem(row_idx, col_idx, cell)
 
-                    self.setItem(row_idx, col_idx, cell)
-
-            self.resizeRowsToContents()                      
+                self.resizeRowsToContents()
+        
+        finally:
+            
+            self.setUpdatesEnabled(True)                      

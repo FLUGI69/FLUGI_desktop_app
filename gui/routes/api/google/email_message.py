@@ -98,6 +98,48 @@ class EmailMessageView(GmailApiView):
                 str(exc)
                 )
             )
+
+    @GmailApiView.rule(endpoint = "messages", method = "attachments.get")
+    async def get_attachment_data(self, 
+        message_id: str, 
+        attachment_id: str
+        ) -> str | None:
+        
+        try:
+            
+            result = await self.execute(
+                messageId = message_id, 
+                id = attachment_id
+            )
+            
+            data = result.get("data")
+            
+            if isinstance(data, str):
+                
+                self.log.debug("Attachment data fetched for message %s, attachment %s (%d chars)" % (
+                    message_id, 
+                    attachment_id, 
+                    len(data)
+                ))
+                
+                return data
+            
+            self.log.warning("No data field in attachment response for message %s, attachment %s" % (
+                message_id, 
+                attachment_id
+            ))
+            
+            return None
+            
+        except HttpError as exc:
+            
+            self.log.error("Failed to fetch attachment %s from message %s: %s" % (
+                attachment_id, 
+                message_id, 
+                str(exc)
+            ))
+            
+            raise
         
     def parse_message_part(self, data: dict) -> MessagePart | None:
         

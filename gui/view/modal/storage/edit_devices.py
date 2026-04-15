@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 from datetime import datetime
 
@@ -33,7 +33,7 @@ class EditDevicesModal(QDialog, LoggerMixin):
         
         self.previous_devices_data: DeviceData = None
         
-        self.setWindowTitle("Edit inventory:")
+        self.setWindowTitle("Készlet módosítása:")
         
         self.setModal(True)
         
@@ -47,23 +47,23 @@ class EditDevicesModal(QDialog, LoggerMixin):
         
         self.setObjectName("EditToolsModal")
         
-        self.label_dropdown = QLabel("Storage:")
+        self.label_dropdown = QLabel("Raktár:")
         self.dropdown_select_storage = QComboBox()
         self.dropdown_select_storage.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_select_storage.setFixedHeight(35)
         self.dropdown_select_storage.addItem("")
 
-        self.label_name = QLabel("Name:")
+        self.label_name = QLabel("Megnevezés:")
         self.input_name = QLineEdit()
         self.input_name.setObjectName("input_unit")
         self.input_name.setFixedHeight(35)
         
-        self.label_manufacture_number = QLabel("Type / Serial number:")
+        self.label_manufacture_number = QLabel("Típus / Gyáriszám:")
         self.input_manufacture_number = QLineEdit()
         self.input_manufacture_number.setObjectName("input_unit")
         self.input_manufacture_number.setFixedHeight(35)
     
-        self.label_quantity = QLabel("Quantity:")
+        self.label_quantity = QLabel("Mennyiség:")
         self.input_quantity = QDoubleSpinBox()
         self.input_quantity.setDecimals(4)
         self.input_quantity.setSingleStep(1)
@@ -73,21 +73,21 @@ class EditDevicesModal(QDialog, LoggerMixin):
         self.input_quantity.setObjectName("input_quantity")
         self.input_quantity.setFixedHeight(35)
     
-        self.label_manufacture_date = QLabel("Manufacturing year:")
+        self.label_manufacture_date = QLabel("Gyártási év:")
         self.manufacture_date = QDateTimeEdit()
         self.manufacture_date.setFixedHeight(35)
         self.manufacture_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.manufacture_date.setCalendarPopup(True)
         self.manufacture_date.setMinimumDateTime(QDateTime(QDate(2000, 1, 1), QTime(0, 0)))
         
-        self.label_commissioning_date = QLabel("Commissioning date:")
+        self.label_commissioning_date = QLabel("Üzembe helyezés időpontja:")
         self.commissioning_date = QDateTimeEdit()
         self.commissioning_date.setFixedHeight(35)
         self.commissioning_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.commissioning_date.setCalendarPopup(True)
         self.commissioning_date.setMinimumDateTime(QDateTime(QDate(2000, 1, 1), QTime(0, 0)))
         
-        self.label_price = QLabel("Net unit price:")
+        self.label_price = QLabel("Netto egységár:")
         self.input_price = QDoubleSpinBox()
         self.input_price.setDecimals(2)
         self.input_price.setSingleStep(0.01)
@@ -100,15 +100,15 @@ class EditDevicesModal(QDialog, LoggerMixin):
         self.label_is_scrap = QLabel("Le selejtezve:")
         self.dropdown_is_scrap = QComboBox()
         self.dropdown_is_scrap.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.dropdown_is_scrap.addItems(["", "Yes", "No"])
+        self.dropdown_is_scrap.addItems(["", "Igen", "Nem"])
         self.dropdown_is_scrap.setFixedHeight(35)
         
-        self.label_purchase_source = QLabel("Purchased from (company, site, distributor):")
+        self.label_purchase_source = QLabel("Beszerezve (cég, olda, forgalmazó):")
         self.input_purchase_source = QLineEdit()
         self.input_purchase_source.setObjectName("input_unit")
         self.input_purchase_source.setFixedHeight(35)
         
-        self.label_purchase_date = QLabel("Purchase date:")
+        self.label_purchase_date = QLabel("Beszerzés időpontja:")
         self.input_purchase_date = QDateTimeEdit()
         self.input_purchase_date.setFixedHeight(35)
         self.input_purchase_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -201,7 +201,7 @@ class EditDevicesModal(QDialog, LoggerMixin):
     
     def get_form_data(self) -> DeviceData:
         
-        is_scrap = self.dropdown_is_scrap.currentText() == "Yes"
+        is_scrap = self.dropdown_is_scrap.currentText() == "Igen"
         
         data = DeviceData(
             id = None,
@@ -251,7 +251,7 @@ class EditDevicesModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -267,7 +267,7 @@ class EditDevicesModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -305,4 +305,3 @@ class EditDevicesModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

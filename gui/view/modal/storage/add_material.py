@@ -1,12 +1,14 @@
-﻿import asyncio
+import asyncio
 import sys, os
 import logging
 import re
 import unicodedata
+from typing import cast
 from datetime import datetime
 from qrcode import QRCode
 from qrcode.constants import ERROR_CORRECT_H
-from PIL import Image, ImageDraw
+from PIL import Image
+from PIL.Image import Image as PILImage, Resampling
 from pathlib import Path
 import io
 
@@ -29,6 +31,7 @@ from PyQt6.QtGui import QCursor
 from utils.dc.material import MaterialData
 from utils.enums.storage_item_type_enum import StorageItemTypeEnum
 from utils.logger import LoggerMixin
+from utils.qr_code_logo_helper import load_qr_logo
 from config import Config
 from db import queries
 
@@ -44,15 +47,15 @@ class AddMaterialModal(QDialog, LoggerMixin):
             
             self.base_path = Path(sys.executable).parent / "_internal"
             
-            self.logo_path = self.base_path / Config.google.paths.logo
+            self.logo_path = self.base_path / Config.img.uuid_logo
                 
         else:
 
-            self.logo_path = Path(Config.google.paths.logo)
-        
+            self.logo_path = Path(Config.img.uuid_logo)
+            
         self._future = None
     
-        self.setWindowTitle("Add to inventory")
+        self.setWindowTitle("Készlethez adás")
         
         self.setModal(True)
         
@@ -66,7 +69,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         
         self.setObjectName("AddWarehouseModal")
         
-        self.label_dropdown = QLabel("Storage:")
+        self.label_dropdown = QLabel("Raktár:")
         self.dropdown_select_storage = QComboBox()
         self.dropdown_select_storage.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dropdown_select_storage.setFixedHeight(35)
@@ -76,7 +79,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.dropdown_select_storage_error.setObjectName("error")
         self.dropdown_select_storage_error.setVisible(False)
 
-        self.label_name = QLabel("Name:")
+        self.label_name = QLabel("Megnevezés:")
         self.input_name = QLineEdit()
         self.input_name.setObjectName("input_unit")
         self.input_name.setFixedHeight(35)
@@ -85,7 +88,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.input_name_error.setObjectName("error")
         self.input_name_error.setVisible(False)
 
-        self.label_manufacture_number = QLabel("Type / Serial number:")
+        self.label_manufacture_number = QLabel("Típus / Gyáriszám:")
         self.input_manufacture_number = QLineEdit()
         self.input_manufacture_number.setObjectName("input_unit")
         self.input_manufacture_number.setFixedHeight(35)
@@ -94,7 +97,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.input_manufacture_number_error.setObjectName("error")
         self.input_manufacture_number_error.setVisible(False)
 
-        self.label_quantity = QLabel("Quantity:")
+        self.label_quantity = QLabel("Mennyiség:")
         self.input_quantity = QDoubleSpinBox()
         self.input_quantity.setDecimals(4)
         self.input_quantity.setSingleStep(0.01)
@@ -108,7 +111,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.input_quantity_error.setObjectName("error")
         self.input_quantity_error.setVisible(False)
 
-        self.label_unit = QLabel("Unit:")
+        self.label_unit = QLabel("Mennyiségi egység:")
         self.input_unit = QLineEdit()
         self.input_unit.setObjectName("input_unit")
         self.input_unit.setFixedHeight(35)
@@ -119,7 +122,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         self.min_datetime = QDateTime.currentDateTime()
 
-        self.label_manufacture_date = QLabel("Manufacturing year:")
+        self.label_manufacture_date = QLabel("Gyártási év:")
         self.manufacture_date = QDateTimeEdit()
         self.manufacture_date.setFixedHeight(35)
         self.manufacture_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -131,7 +134,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.manufacture_date_error.setObjectName("error")
         self.manufacture_date_error.setVisible(False)
 
-        self.label_price = QLabel("Net unit price:")
+        self.label_price = QLabel("Netto egységár:")
         self.input_price = QDoubleSpinBox()
         self.input_price.setDecimals(2)
         self.input_price.setSingleStep(0.01)
@@ -145,7 +148,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.input_price_error.setObjectName("error")
         self.input_price_error.setVisible(False)
 
-        self.label_purchase_source = QLabel("Purchased from (company, site, distributor):")
+        self.label_purchase_source = QLabel("Beszerezve (cég, oldal, forgalmazó):")
         self.input_purchase_source = QLineEdit()
         self.input_purchase_source.setObjectName("input_unit")
         self.input_purchase_source.setFixedHeight(35)
@@ -154,7 +157,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.input_purchase_source_error.setObjectName("error")
         self.input_purchase_source_error.setVisible(False)
         
-        self.label_purchase_date = QLabel("Purchase date:")
+        self.label_purchase_date = QLabel("Beszerzés időpontja:")
         self.input_purchase_date = QDateTimeEdit()
         self.input_purchase_date.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.input_purchase_date.setCalendarPopup(True)
@@ -250,7 +253,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         if storage_id is None:
             
-            self.dropdown_select_storage_error.setText("You did not select a warehouse")
+            self.dropdown_select_storage_error.setText("Nem választottál raktárat")
             self.dropdown_select_storage_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'storage' field is empty")
@@ -263,7 +266,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
             
         if name == "":
 
-            self.input_name_error.setText("You did not provide a name")
+            self.input_name_error.setText("Nem adtál meg megnevezést")
             self.input_name_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'name' field is empty")
@@ -276,7 +279,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         if manufacture_number == "":
 
-            self.input_manufacture_number_error.setText("You did not provide a serial number")
+            self.input_manufacture_number_error.setText("Nem adtál meg gyáriszámot")
             self.input_manufacture_number_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'manufacture_number' field is empty")
@@ -289,7 +292,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
             
         if quantity <= 1e-4:
 
-            self.input_quantity_error.setText("Quantity must be at least 1")
+            self.input_quantity_error.setText("A mennyiség legalább 1 kell legyen")
             self.input_quantity_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'quantity' field is invalid")
@@ -302,7 +305,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         if unit == "":
 
-            self.input_unit_error.setText("You did not provide a unit of measure")
+            self.input_unit_error.setText("Nem adtál meg mennyiségi egységet")
             self.input_unit_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'unit' field is empty")
@@ -315,7 +318,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
             
         if manufacture_dt == current_time:
             
-            self.manufacture_date_error.setText("Manufacturing date cannot be exactly the current time")
+            self.manufacture_date_error.setText("Gyártási időpont nem lehet pontosan a jelenlegi időpont")
             self.manufacture_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'manufacture_date' equals current time")
@@ -324,7 +327,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         elif manufacture_dt < QDateTime(QDate(2000, 1, 1), QTime(0, 0)):
             
-            self.manufacture_date_error.setText("Manufacturing year must be at least 2000")
+            self.manufacture_date_error.setText("A gyártási év legalább 2000 lehet")
             self.manufacture_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'manufacture_date' field is invalid")
@@ -337,7 +340,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
             
         if purchase_date == current_time:
             
-            self.input_purchase_date_error.setText("Purchase date cannot be exactly the current time")
+            self.input_purchase_date_error.setText("Beszerzés időpontja nem lehet pontosan a jelenlegi időpont")
             self.input_purchase_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'purchase_date' equals current time")
@@ -346,7 +349,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         elif purchase_date < QDateTime(QDate(2000, 1, 1), QTime(0, 0)):
             
-            self.input_purchase_date_error.setText("Purchase year must be at least 2000")
+            self.input_purchase_date_error.setText("A beszerzési év legalább 2000 lehet")
             self.input_purchase_date_error.setVisible(True)
             
             self.log.warning("Input validation failed: 'purchase_date' field is invalid")
@@ -359,7 +362,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         if price < 1e-2:
 
-            self.input_price_error.setText("Price cannot be negative")
+            self.input_price_error.setText("Az ár nem lehet negatív")
             self.input_price_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'price' field is invalid")
@@ -372,7 +375,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
 
         if purchase_source == "":
 
-            self.input_purchase_source_error.setText("You did not provide a purchase source")
+            self.input_purchase_source_error.setText("Nem adtál meg beszerzési forrást")
             self.input_purchase_source_error.setVisible(True)
 
             self.log.warning("Input validation failed: 'purchase_source' field is empty")
@@ -421,38 +424,34 @@ class AddMaterialModal(QDialog, LoggerMixin):
             qr_code.add_data(qr_data)
             qr_code.make(fit = True)
             
-            qr_code_img = qr_code.make_image(fill_color = "black", back_color = "white").convert("RGB")
+            qr_code_img: PILImage = cast(PILImage, qr_code.make_image(fill_color = "black", back_color = "white").convert("RGB"))
 
-            logo = Image.open(self.logo_path).convert("RGBA")
+            qr_width: int
+            qr_height: int
+            qr_width, qr_height = cast(tuple[int, int], qr_code_img.size)
 
-            qr_width, qr_height = qr_code_img.size
+            border_thickness: int = 4
+            overlay_outer: int = int(min(qr_width, qr_height) * 0.30)
+            inner_max: int = max(1, overlay_outer - (2 * border_thickness))
 
-            logo_size = int(qr_width * 0.2)
-            
-            logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
+            logo: PILImage = load_qr_logo(self.logo_path, (inner_max, inner_max))
 
-            border_thickness = 4
-            
-            frame_color = (66, 133, 244, 255)
-            bg_color = (255, 255, 255, 255) 
+            logo_width: int
+            logo_height: int
+            logo_width, logo_height = cast(tuple[int, int], logo.size)
 
-            logo_bg_size = (logo_size + 2 * border_thickness, logo_size + 2 * border_thickness)
-            logo_bg = Image.new("RGBA", logo_bg_size, bg_color)
+            bg_color: tuple[int, int, int, int] = (255, 255, 255, 255)
 
-            draw = ImageDraw.Draw(logo_bg)
-            draw.rectangle(
-                [(0, 0), (logo_bg_size[0] - 1, logo_bg_size[1] - 1)], 
-                outline = frame_color,
-                width = border_thickness
-            )
+            logo_bg_size: tuple[int, int] = (logo_width + (2 * border_thickness), logo_height + (2 * border_thickness))
+            logo_bg: PILImage = Image.new("RGBA", logo_bg_size, bg_color)
 
             logo_bg.paste(logo, (border_thickness, border_thickness), logo)
 
-            pos = (qr_width - logo_bg_size[0] - 24, qr_height - logo_bg_size[1] - 24)
+            pos: tuple[int, int] = ((qr_width - logo_bg_size[0]) // 2, (qr_height - logo_bg_size[1]) // 2)
 
-            qr_code_img = qr_code_img.convert("RGBA")
+            qr_code_img = cast(PILImage, qr_code_img.convert("RGBA"))
             qr_code_img.paste(logo_bg, pos, logo_bg)
-            qr_code_img = qr_code_img.convert("RGB")
+            qr_code_img = cast(PILImage, qr_code_img.convert("RGB"))
 
             if getattr(sys, 'frozen', False):
                 
@@ -546,7 +545,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal accepted by the user; setting future result to True")
+            self.log.info("Modal accepted by the user setting future result to True")
             
             self._future.set_result(True)
             
@@ -562,7 +561,7 @@ class AddMaterialModal(QDialog, LoggerMixin):
         
         if self._future and not self._future.done():
             
-            self.log.info("Modal rejected by the user; setting future result to False")
+            self.log.info("Modal rejected by the user setting future result to False")
             
             self._future.set_result(False)
             
@@ -600,4 +599,3 @@ class AddMaterialModal(QDialog, LoggerMixin):
         self.log.info("Modal closed; signals disconnected and closing event propagated")
         
         super().closeEvent(event)
-

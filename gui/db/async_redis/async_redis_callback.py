@@ -77,19 +77,17 @@ class AsyncRedisCallback(LoggerMixin):
             if possible_service is not None and possible_service is not self.redis_client:
                 
                 if "Service" in type(possible_service).__name__:
-                    
                     service_instance = possible_service
 
                     for frame_info2 in inspect.stack()[2:]:
                         
                         possible_owner = frame_info2.frame.f_locals.get("self")
                         
-                        if possible_owner is not None and possible_owner is not self.redis_client:
+                        if possible_owner is not None and possible_owner is not self.redis_client and hasattr(possible_owner, "__dict__"):
            
                             for attribute_name, attribute_value in vars(possible_owner).items():
                                 
                                 if attribute_value is service_instance:
-                                    
                                     return service_instance, possible_owner, attribute_name
 
                     return service_instance, None, None

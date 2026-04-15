@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -11,11 +12,16 @@ class RentalHistoryCacheService(LoggerMixin):
     
     log: logging.Logger
     
-    def __init__(self, redis_client: AsyncRedisClient):
+    KEY_PREFIX = "rental_history:"
+    
+    def __init__(self, 
+        redis_client: AsyncRedisClient,
+        rental_lock: asyncio.Lock
+        ):
         
         self.redis_client = redis_client
-    
-    KEY_PREFIX = "rental_history:"
+        
+        self.rental_lock = rental_lock
 
     def _make_key(self, rentals_cache_id: str) -> str:
         
@@ -99,7 +105,8 @@ class RentalHistoryCacheService(LoggerMixin):
                     }
                 }
                 
-                await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
+                async with self.rental_lock:
+                    await self.redis_client.set(key, json.dumps(wrapped, default = str), ex = exp)
                 
                 self.log.debug("Calendar data cached for %s" % rentals_cache_id)
                 
@@ -119,4 +126,5 @@ class RentalHistoryCacheService(LoggerMixin):
         
         self.log.info("Clearing cache for key: %s" % key)
         
-        await self.redis_client.clear_cache(key)
+        async with self.rental_lock:
+            await self.redis_client.clear_cache(key)

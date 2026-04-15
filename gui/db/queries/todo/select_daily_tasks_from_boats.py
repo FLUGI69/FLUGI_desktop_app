@@ -2,7 +2,7 @@ from sqlalchemy.orm import aliased, joinedload, noload, with_loader_criteria
 from sqlalchemy import select, func, and_
 from sqlalchemy.engine import Row
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import typing as t
 
 from db.async_query_base.async_query_base import AsyncQueryBase
@@ -15,6 +15,8 @@ class select_daily_tasks_from_boats(AsyncQueryBase):
         
         now = datetime.now(Config.time.timezone_utc)
         
+        one_month_later = now + timedelta(days = 30)
+        
         schedule = aliased(example_db.schedule)
         
         earliest_schedule = (
@@ -26,7 +28,7 @@ class select_daily_tasks_from_boats(AsyncQueryBase):
                 
             ).where(
                 and_(
-                    schedule.arrived_date <= now,
+                    schedule.arrived_date <= one_month_later,
                     schedule.leave_date >= now
                 )
             ).group_by(
@@ -49,7 +51,7 @@ class select_daily_tasks_from_boats(AsyncQueryBase):
                 detailed_schedule, 
                 and_(
                     detailed_schedule.boat_id == example_db.boat.id,
-                    detailed_schedule.arrived_date <= now,
+                    detailed_schedule.arrived_date <= one_month_later,
                     detailed_schedule.leave_date >= now
                 )
             ).join(
