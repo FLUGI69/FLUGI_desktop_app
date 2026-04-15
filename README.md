@@ -555,7 +555,7 @@ python --version
 
 ## Author
 
-**Flugi**
+**Tamás Jerzsabek**
 
 ## License
 
