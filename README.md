@@ -553,10 +553,12 @@ python --version
 - reinstall dependencies with `pip install -r requirements.txt`
 - verify `gui/config/config.py` contains all required fields from `config_example.py`
 
-## Legal Notice
+## Author
 
-Copyright (c) 2025 FLUGI69.
-All rights reserved.
+**Flugi**
 
-This repository and its source code are protected by copyright law.
-Use, modification, redistribution, or public reuse may require explicit permission from the owner.
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+Copyright (c) 2025-2026 FLUGI69
