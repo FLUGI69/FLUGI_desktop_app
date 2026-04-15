@@ -49,127 +49,127 @@ This repository is used as a **portfolio project reference**, showing a full-sta
 ## Complete Technology Stack & Libraries
 
 ### Desktop UI & Graphics
-- **PyQt6** (6.9.0) — GUI framework
-- **PyQt6-WebEngine** (6.9.0) — embedded web browser engine
-- **Pillow** (11.3.0) — image processing and manipulation
-- **qasync** (0.28.0) — Qt + asyncio event loop integration
+- **PyQt6** (6.9.0) - GUI framework
+- **PyQt6-WebEngine** (6.9.0) - embedded web browser engine
+- **Pillow** (11.3.0) - image processing and manipulation
+- **qasync** (0.28.0) - Qt + asyncio event loop integration
 
 ### Database & ORM
-- **SQLAlchemy** (2.0.41) — SQL toolkit and ORM
-- **SQLAlchemy-Utils** (0.41.2) — additional utilities for SQLAlchemy
-- **aiomysql** (0.2.0) — async MySQL driver
-- **PyMySQL** (1.1.1) — Pure Python MySQL client
+- **SQLAlchemy** (2.0.41) - SQL toolkit and ORM
+- **SQLAlchemy-Utils** (0.41.2) - additional utilities for SQLAlchemy
+- **aiomysql** (0.2.0) - async MySQL driver
+- **PyMySQL** (1.1.1) - Pure Python MySQL client
 
 ### Cache & Real-time Communication
-- **redis** (5.0.4) — Redis client
-- **python-socketio** (5.13.0) — WebSocket/Socket.IO client
-- **python-engineio** (4.12.2) — Engine.IO protocol implementation
-- **websocket-client** (1.9.0) — WebSocket client library
-- **websockets** (15.0.1) — async WebSocket implementation
+- **redis** (5.0.4) - Redis client
+- **python-socketio** (5.13.0) - WebSocket/Socket.IO client
+- **python-engineio** (4.12.2) - Engine.IO protocol implementation
+- **websocket-client** (1.9.0) - WebSocket client library
+- **websockets** (15.0.1) - async WebSocket implementation
 
 ### HTTP & Network
-- **requests** (2.32.3) — HTTP library
-- **httpx** (0.28.1) — modern async HTTP client
-- **httpcore** (1.0.9) — low-level HTTP transport
-- **aiohttp** (3.12.0) — async HTTP client/server framework
-- **aiofiles** (24.1.0) — async file I/O
-- **urllib3** (2.5.0) — HTTP client with connection pooling
-- **paramiko** (3.5.1) — SSH protocol implementation
-- **sshtunnel** (0.4.0) — SSH tunneling utility
+- **requests** (2.32.3) - HTTP library
+- **httpx** (0.28.1) - modern async HTTP client
+- **httpcore** (1.0.9) - low-level HTTP transport
+- **aiohttp** (3.12.0) - async HTTP client/server framework
+- **aiofiles** (24.1.0) - async file I/O
+- **urllib3** (2.5.0) - HTTP client with connection pooling
+- **paramiko** (3.5.1) - SSH protocol implementation
+- **sshtunnel** (0.4.0) - SSH tunneling utility
 
 ### Web Automation & Scraping
-- **playwright** (1.55.0) — browser automation framework
-- **selenium-stealth** (1.0.6) — Selenium detection avoidance
-- **beautifulsoup4** (4.13.4) — HTML/XML parser
-- **lxml** (5.4.0) — fast XML/HTML processing
+- **playwright** (1.55.0) - browser automation framework
+- **selenium-stealth** (1.0.6) - Selenium detection avoidance
+- **beautifulsoup4** (4.13.4) - HTML/XML parser
+- **lxml** (5.4.0) - fast XML/HTML processing
 
 ### Document Generation & PDF
-- **WeasyPrint** (68.0) — HTML to PDF converter
-- **CairoSVG** (2.8.2) — SVG converter
-- **PyMuPDF** (1.26.1) — PDF toolkit (fitz)
-- **Jinja2** (3.1.6) — template engine
+- **WeasyPrint** (68.0) - HTML to PDF converter
+- **CairoSVG** (2.8.2) - SVG converter
+- **PyMuPDF** (1.26.1) - PDF toolkit (fitz)
+- **Jinja2** (3.1.6) - template engine
 - **reportlab** capabilities via WeasyPrint
-- **qrcode** (8.2) — QR code generation
+- **qrcode** (8.2) - QR code generation
 
 ### Data Processing & Scientific Computing
-- **pandas** (2.3.0) — data analysis and manipulation
-- **numpy** (2.3.1) — numerical computing
-- **scipy** (1.16.0) — scientific computing
-- **narwhals** (2.12.0) — DataFrame interoperability layer
+- **pandas** (2.3.0) - data analysis and manipulation
+- **numpy** (2.3.1) - numerical computing
+- **scipy** (1.16.0) - scientific computing
+- **narwhals** (2.12.0) - DataFrame interoperability layer
 
 ### Google Integration
-- **google-api-python-client** (2.169.0) — Google APIs client
-- **google-auth** (2.40.1) — Google authentication
-- **google-auth-httplib2** (0.2.0) — HTTP transport for Google Auth
-- **google-auth-oauthlib** (1.2.2) — OAuth 2.0 integration
-- **googleapis-common-protos** (1.70.0) — Common protocol buffers
+- **google-api-python-client** (2.169.0) - Google APIs client
+- **google-auth** (2.40.1) - Google authentication
+- **google-auth-httplib2** (0.2.0) - HTTP transport for Google Auth
+- **google-auth-oauthlib** (1.2.2) - OAuth 2.0 integration
+- **googleapis-common-protos** (1.70.0) - Common protocol buffers
 
 ### AI & Machine Learning
-- **openai** (1.90.0) — OpenAI API client (GPT integration)
+- **openai** (1.90.0) - OpenAI API client (GPT integration)
 
 ### Financial & External APIs
-- **mnb** (1.0.1) — Magyar Nemzeti Bank (Hungarian National Bank) exchange rate API
-- **zeep** (4.3.2) — SOAP client for web services
+- **mnb** (1.0.1) - Magyar Nemzeti Bank (Hungarian National Bank) exchange rate API
+- **zeep** (4.3.2) - SOAP client for web services
 
 ### Security & Cryptography
-- **bcrypt** (4.3.0) — password hashing
-- **cryptography** (46.0.3) — cryptographic recipes and primitives
-- **pyOpenSSL** (25.3.0) — OpenSSL wrapper
+- **bcrypt** (4.3.0) - password hashing
+- **cryptography** (46.0.3) - cryptographic recipes and primitives
+- **pyOpenSSL** (25.3.0) - OpenSSL wrapper
 
 ### Data Validation & Serialization
-- **pydantic** (2.11.4) — data validation using Python type hints
-- **pydantic_core** (2.33.2) — core validation logic for Pydantic
-- **attrs** (25.3.0) — classes without boilerplate
+- **pydantic** (2.11.4) - data validation using Python type hints
+- **pydantic_core** (2.33.2) - core validation logic for Pydantic
+- **attrs** (25.3.0) - classes without boilerplate
 
 ### Logging & Development Tools
-- **colorlog** (6.9.0) — colored terminal logging
-- **colorama** (0.4.6) — cross-platform colored terminal output
-- **logging** (built-in) — structured logging framework
+- **colorlog** (6.9.0) - colored terminal logging
+- **colorama** (0.4.6) - cross-platform colored terminal output
+- **logging** (built-in) - structured logging framework
 
 ### Configuration & Utilities
-- **configobj** (5.0.9) — config file reader/writer
-- **configparser** (7.2.0) — configuration file parser
-- **python-dateutil** (2.9.0.post0) — date/time parsing and manipulation
-- **pytz** (2025.2) — timezone definitions
-- **tzdata** (2025.2) — timezone database
+- **configobj** (5.0.9) - config file reader/writer
+- **configparser** (7.2.0) - configuration file parser
+- **python-dateutil** (2.9.0.post0) - date/time parsing and manipulation
+- **pytz** (2025.2) - timezone definitions
+- **tzdata** (2025.2) - timezone database
 
 ### Medical Imaging (Nibabel/Nipype)
-- **nibabel** (5.3.2) — neuroimaging data I/O
-- **nipype** (1.10.0) — neuroimaging pipeline framework
-- **prov** (2.0.2) — provenance data model
-- **etelemetry** (0.3.1) — anonymous usage tracking
-- **traits** (7.0.2) — typed attributes for Python
+- **nibabel** (5.3.2) - neuroimaging data I/O
+- **nipype** (1.10.0) - neuroimaging pipeline framework
+- **prov** (2.0.2) - provenance data model
+- **etelemetry** (0.3.1) - anonymous usage tracking
+- **traits** (7.0.2) - typed attributes for Python
 
 ### Async & Concurrency
-- **trio** (0.31.0) — async I/O framework
-- **trio-websocket** (0.12.2) — WebSocket library for Trio
-- **outcome** (1.3.0.post0) — capture function outcomes
-- **sniffio** (1.3.1) — async library detection
-- **greenlet** (3.2.2) — lightweight concurrent programming
+- **trio** (0.31.0) - async I/O framework
+- **trio-websocket** (0.12.2) - WebSocket library for Trio
+- **outcome** (1.3.0.post0) - capture function outcomes
+- **sniffio** (1.3.1) - async library detection
+- **greenlet** (3.2.2) - lightweight concurrent programming
 
 ### Compression & Encoding
-- **Brotli** (1.1.0) — compression algorithm
-- **zstandard** (0.25.0) — Zstandard compression
-- **zopfli** (0.2.3.post1) — compression library
+- **Brotli** (1.1.0) - compression algorithm
+- **zstandard** (0.25.0) - Zstandard compression
+- **zopfli** (0.2.3.post1) - compression library
 
 ### Build & Packaging
-- **PyInstaller** (6.14.2) — freeze Python applications
-- **pyinstaller-hooks-contrib** (2025.5) — extra PyInstaller hooks
-- **setuptools** (80.8.0) — package development utilities
-- **altgraph** (0.17.4) — graph library for PyInstaller
-- **pefile** (2023.2.7) — PE file parser (Windows executables)
+- **PyInstaller** (6.14.2) - freeze Python applications
+- **pyinstaller-hooks-contrib** (2025.5) - extra PyInstaller hooks
+- **setuptools** (80.8.0) - package development utilities
+- **altgraph** (0.17.4) - graph library for PyInstaller
+- **pefile** (2023.2.7) - PE file parser (Windows executables)
 
 ### Miscellaneous
-- **click** (8.2.1) — command-line interface framework
-- **rich** (14.0.0) — rich text and formatting in terminal
-- **tqdm** (4.67.1) — progress bar utilities
-- **bidict** (0.23.1) — bidirectional dictionary
-- **cachetools** (5.5.2) — caching utilities
-- **simplejson** (3.20.1) — JSON encoder/decoder
-- **sortedcontainers** (2.4.0) — sorted collections
-- **defusedxml** (0.7.1) — XML bomb protection
-- **looseversion** (1.3.0) — version comparison
-- **packaging** (25.0) — package version handling
+- **click** (8.2.1) - command-line interface framework
+- **rich** (14.0.0) - rich text and formatting in terminal
+- **tqdm** (4.67.1) - progress bar utilities
+- **bidict** (0.23.1) - bidirectional dictionary
+- **cachetools** (5.5.2) - caching utilities
+- **simplejson** (3.20.1) - JSON encoder/decoder
+- **sortedcontainers** (2.4.0) - sorted collections
+- **defusedxml** (0.7.1) - XML bomb protection
+- **looseversion** (1.3.0) - version comparison
+- **packaging** (25.0) - package version handling
 
 ## Repository Structure
 
@@ -243,7 +243,7 @@ TableBase = MySQLDatabase.declarative_base("example_db")
 This call:
 1. Creates a new entry in the global `Tables` dict with the database name `"example_db"` as the key.
 2. Returns a custom `DeclarativeMeta`-based base class.
-3. Every class that inherits from `TableBase` is automatically registered into `Tables["example_db"]` — the class name becomes the key, and the class itself becomes the value.
+3. Every class that inherits from `TableBase` is automatically registered into `Tables["example_db"]` - the class name becomes the key, and the class itself becomes the value.
 
 For example, in `gui/db/tables.py`:
 
@@ -288,7 +288,7 @@ This means the database schema always stays in sync with the Python model defini
 
 The query system uses a dynamic loading + stub verification pattern:
 
-**1. `import_queries()` — Dynamic Scanning and Registration**
+**1. `import_queries()` - Dynamic Scanning and Registration**
 
 During `connect_database()`, after schema validation, `import_queries()` is called. It:
 
@@ -304,7 +304,7 @@ During `connect_database()`, after schema validation, `import_queries()` is call
 
 **Key constraint**: `attribute.__name__` (the class name) must match the module file name. This is enforced by the check `attribute.__name__ == module_name`.
 
-**2. `__query_references_check()` — Stub Verification**
+**2. `__query_references_check()` - Stub Verification**
 
 After all queries are imported, the system runs a reference check against the stubs in `gui/db/queries/__init__.py`:
 
@@ -340,7 +340,7 @@ class select_tenant(AsyncQueryBase):
 
 The `AsyncQueryBase.__call__` method:
 - Opens a new `AsyncSession` context.
-- Calls `self.query(*args, **kwargs)` — the abstract method implemented by the derived class.
+- Calls `self.query(*args, **kwargs)` - the abstract method implemented by the derived class.
 - Handles rollback on exceptions and logs session lifecycle.
 
 `AsyncQueryCallback.__call__` wraps this:
@@ -358,7 +358,7 @@ queries.select_tenant(item_id=5)
 
 **Why This Architecture?**
 
-- **Auto-schema sync**: Tables and columns are created/updated automatically — no manual migration scripts needed for development.
+- **Auto-schema sync**: Tables and columns are created/updated automatically - no manual migration scripts needed for development.
 - **Convention enforcement**: File name must match class name; stubs must match queries. Violations are caught at startup with helpful error messages.
 - **IDE integration**: Stubs in `__init__.py` give full autocomplete and type checking while the real implementation is loaded dynamically.
 - **Fresh session per call**: Each query invocation gets its own session context with automatic rollback on failure.
