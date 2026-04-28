@@ -3,15 +3,13 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from googleapiclient.errors import HttpError
 
-from utils.dc.batch_request import BatchRequestData
-from utils.dc.gmail_response_data import Message, EmailHeaders, Header, MessagePartBody, MessagePart
+from utils.dc.google.batch_request import BatchRequestData
+from utils.dc.google.gmail_response_data import Message, EmailHeaders, Header, MessagePartBody, MessagePart
 from .api_view import GmailApiView
 from utils.enums.email_status_enum import StatusTypeEnum
 from config import Config
 
 class EmailHeadersView(GmailApiView):
-    
-    endpoint = "messages"
     
     def __init__(self, user_id, creds):
         
@@ -41,6 +39,7 @@ class EmailHeadersView(GmailApiView):
                 )
             )
             
+    @GmailApiView.rule(endpoint = "messages", method = "get")
     async def list_email_headers_batch(self, messages: list[Message]) -> list[EmailHeaders]:
         
         parsed_results = []

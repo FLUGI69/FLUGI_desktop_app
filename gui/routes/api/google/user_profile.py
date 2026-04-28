@@ -5,7 +5,7 @@ import base64
 from googleapiclient.errors import HttpError
 
 from .api_view import GmailApiView
-from utils.dc.gmail_user_profile_data import GmailUserProfileData
+from utils.dc.google.gmail_user_profile_data import GmailUserProfileData
 
 class UserProfileView(GmailApiView):
     
@@ -31,7 +31,7 @@ class UserProfileView(GmailApiView):
             
             result = await self.execute()
             
-            parsed_result = self.parse_response(result)
+            parsed_result: GmailUserProfileData = self.parse_response(result)
             
             self.log.debug("GmailUserProfileData response: %s" % parsed_result)
             

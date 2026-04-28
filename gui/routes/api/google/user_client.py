@@ -10,7 +10,7 @@ from utils.logger import LoggerMixin
 from .api_view import GmailApiView
 from utils.handlers.installed_app_flow import FlugiAppFlow
 from utils.dc.user_device import UserDevice
-from utils.dc.google_token import GoogleToken
+from utils.dc.google.google_token import GoogleToken
 from db import queries
 from config import Config
 

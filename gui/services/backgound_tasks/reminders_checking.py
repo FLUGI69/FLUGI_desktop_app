@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import asyncio
 import traceback
 import logging
+import typing as t
 
 from config import Config
 from utils.logger import LoggerMixin
@@ -12,6 +13,9 @@ from db.async_redis import AsyncRedisClient
 from utils.handlers.math import UtilityCalculator
 from config import Config
 
+if t.TYPE_CHECKING:
+    from async_loop import QtApplication
+
 class ReminderWorker(QObject, LoggerMixin):
     
     log: logging.Logger
@@ -20,7 +24,8 @@ class ReminderWorker(QObject, LoggerMixin):
     
     finished = pyqtSignal()
 
-    def __init__(self, 
+    def __init__(self,
+        app: 'QtApplication', 
         redis_client: AsyncRedisClient, 
         utility_calculator: UtilityCalculator,
         reminder_lock: asyncio.Lock,
@@ -41,10 +46,17 @@ class ReminderWorker(QObject, LoggerMixin):
         
         self.interval = interval_ms / 1000
         
-        self.reminder_cache = CalendarReminderCacheService(
-            redis_client = redis_client,
-            reminder_lock = reminder_lock
-        )
+        if app.reminder_cache_service is None:
+  
+            self.reminder_cache = CalendarReminderCacheService(
+                redis_client = redis_client,
+                reminder_lock = reminder_lock
+            )
+            app.reminder_cache_service = self.reminder_cache
+            
+        else:
+   
+            self.reminder_cache = app.reminder_cache_service
 
         self.calendar_cache_data = None
         

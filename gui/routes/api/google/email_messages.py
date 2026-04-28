@@ -3,7 +3,7 @@ from datetime import datetime
 from googleapiclient.errors import HttpError
 
 from .api_view import GmailApiView
-from utils.dc.gmail_response_data import ListMessages, Message
+from utils.dc.google.gmail_response_data import ListMessages, Message
 from utils.enums.email_status_enum import StatusTypeEnum
 
 class EmailMessagesView(GmailApiView):

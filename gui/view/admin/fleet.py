@@ -60,10 +60,17 @@ class FleetContent(QWidget, LoggerMixin):
         self._page = 0
         self._full_data: t.List[FleetData] = []
         
-        self.fleet_cache_service = FleetCacheService(
-            redis_client = admin_view.main_window.app.redis_client,
-            fleet_lock = admin_view.main_window.app.fleet_lock
-        )
+        if admin_view.main_window.app.fleet_cache_service is None:
+            
+            self.fleet_cache_service = FleetCacheService(
+                redis_client = admin_view.main_window.app.redis_client,
+                fleet_lock = admin_view.main_window.app.fleet_lock
+            )
+            admin_view.main_window.app.fleet_cache_service = self.fleet_cache_service
+       
+        else:
+           
+            self.fleet_cache_service = admin_view.main_window.app.fleet_cache_service
         
         self._search_timer = QTimer()
         self._search_timer.setSingleShot(True)

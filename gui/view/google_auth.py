@@ -29,12 +29,14 @@ from routes.api.google.exceptions import (
     AuthenticationError,
 )
 from routes.api.google import UserClientView
+from services.backgound_tasks.email.email_LLM_ingestion_worker import EmailLLMIngestionWorker
 from services.backgound_tasks.otp_zip_worker import OTPZipWorker
 from .main_window import MainWindow
 from config import Config
 from utils.handlers.widgets.clickable import ClickableWidget
 from utils.dc.ip_info import IPInfo
 from utils.dc.user_device import UserDevice
+from websocket.gmail_push_notification import QtGmailPushNotification
 
 if t.TYPE_CHECKING:
     
@@ -479,14 +481,46 @@ class GmailLoginWindow(QWidget, LoggerMixin):
         
         self.log.debug("Successfully authenticated")
         
-        if self.app.redis_client is not None and self.app.otp_zip_worker is None:
+        if self.app.redis_client is not None:
             
-            self.app.otp_zip_worker = OTPZipWorker(
-                user_client = self.user_client,
-                redis_client = self.app.redis_client
-            )
+            if self.app.otp_zip_worker is None:
+                
+                self.app.otp_zip_worker = OTPZipWorker(
+                    user_client = self.user_client,
+                    redis_client = self.app.redis_client
+                )
+                
+                self.app.add_background_task(self.app.otp_zip_worker._run_loop)
             
-            self.app.add_background_task(self.app.otp_zip_worker._run_loop)
+            if self.app.websocket_enabled == True:
+            
+                self.app.gmail_push_notification = QtGmailPushNotification(
+                    app = self.app,
+                    namespace = Config.websocket.namespaces[1]
+                )
+                
+                self.app.add_background_task(self.app.gmail_push_notification.setup_websocket_event(
+                    host = Config.websocket.host,
+                    port =  Config.websocket.port,
+                    auth_token = Config.websocket.auth_token,
+                    sshtunnel_host = Config.websocket.ssh.host if self.app.is_dev_mode == False else None,
+                    sshtunnel_port = Config.websocket.ssh.port if self.app.is_dev_mode == False else None,
+                    sshtunnel_user = Config.websocket.ssh.user if self.app.is_dev_mode == False else None,
+                    sshtunnel_pass = Config.websocket.ssh.passwd if self.app.is_dev_mode == False else None,
+                    sshtunnel_private_key_path = Config.websocket.ssh.privateKeyPath if self.app.is_dev_mode == False else None
+                    )
+                )
+                
+                if self.app.gmail_push_notification.is_connected == True:
+                    
+                    if self.app.email_ingestion_worker is None:
+                        
+                        self.app.email_ingestion_worker = EmailLLMIngestionWorker(
+                            user_client = self.user_client,
+                            redis_client = self.app.redis_client
+                        )
+                        
+                        self.app.add_background_task(self.app.email_ingestion_worker._run_loop)
         
     def _handle_error(self, title: str, exc: Exception) -> None:
         

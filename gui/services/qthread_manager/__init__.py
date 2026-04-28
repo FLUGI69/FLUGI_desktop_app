@@ -1,1 +1,1 @@
-from .qthread_manager import QthreadManager
+from .qthread_manager import QThreadManager

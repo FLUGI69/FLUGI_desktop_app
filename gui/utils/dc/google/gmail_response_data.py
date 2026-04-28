@@ -68,7 +68,7 @@ class Message(DataclassBaseModel):
     labelIds: t.Optional[t.List[StatusTypeEnum]] = None
     snippet: str | None = None
     historyId: int | None = None  # Gmail numerikus stringként jön, de logikailag int
-    internalDate: datetime | None = None  # Unix timestamp string → datetime konverzió kell majd
+    internalDate: datetime | None = None  # Unix timestamp string -> datetime konverzió kell majd
     payload: MessagePart | None = None
     sizeEstimate: int | None = None
     raw: str | None = None

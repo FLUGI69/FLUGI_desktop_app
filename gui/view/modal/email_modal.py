@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from utils.dc.gmail_response_data import EmailHeaders
+from utils.dc.google.gmail_response_data import EmailHeaders
 from utils.logger import LoggerMixin
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 

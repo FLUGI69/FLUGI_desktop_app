@@ -1055,7 +1055,6 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         html_hu = self.render_html(order_number = real_order_number)
         
         if html_hu == "":
-            
             return
         
         quotations_dir = "quotations"
@@ -1385,7 +1384,6 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         ):
     
         if translator is None:
-            
             translator = lambda x: x
     
         today = date.today()
@@ -1393,7 +1391,6 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         valid_until = today + timedelta(days = 7)
         
         if order_number is None:
-            
             order_number = self._preview_order_number
         
         order_number = Markup(order_number)
@@ -1481,7 +1478,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         return os.path.join(os.path.dirname(__file__), "../../lang")
     
-    def _get_po_file_path(self, lang_code: str) -> str:
+    def _get_lang_json_file_path(self, lang_code: str) -> str:
         
         lang_dir = self._get_lang_dir()
         
@@ -1489,9 +1486,9 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         return os.path.join(lang_dir, f"{lang_code}.json")
     
-    def _load_po_cache(self, lang_code: str) -> dict:
+    def _load_lang_json_cache(self, lang_code: str) -> dict:
         
-        po_path = self._get_po_file_path(lang_code)
+        po_path = self._get_lang_json_file_path(lang_code)
         
         if os.path.exists(po_path):
             
@@ -1501,15 +1498,15 @@ class PriceQuotationContent(QWidget, LoggerMixin):
         
         return {}
     
-    def _save_po_cache(self, lang_code: str, translations: dict):
+    def _save_lang_json_cache(self, lang_code: str, translations: dict):
         
-        po_path = self._get_po_file_path(lang_code)
+        po_path = self._get_lang_json_file_path(lang_code)
         
         with open(po_path, "w", encoding = "utf-8") as f:
             
             json.dump(translations, f, ensure_ascii = False, indent = 2)
         
-        self.log.debug("PO cache saved: %s" % po_path)
+        self.log.debug("Json cache saved: %s" % po_path)
     
     def _collect_user_content_strings(self) -> list:
         
@@ -1579,7 +1576,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
     
     async def _translate_template_strings(self, lang_code: str) -> dict:
         
-        cache = self._load_po_cache(lang_code)
+        cache = self._load_lang_json_cache(lang_code)
         
         template_strings = self._extract_template_strings()
         
@@ -1593,7 +1590,7 @@ class PriceQuotationContent(QWidget, LoggerMixin):
             
             cache.update(new_translations)
             
-            self._save_po_cache(lang_code, cache)
+            self._save_lang_json_cache(lang_code, cache)
         
         else:
             

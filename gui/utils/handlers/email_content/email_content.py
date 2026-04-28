@@ -5,7 +5,7 @@ import typing as t
 from html import escape
 
 from utils.logger import LoggerMixin
-from utils.dc.gmail_response_data import MessagePart
+from utils.dc.google.gmail_response_data import MessagePart
 
 class EmailContentHandler(LoggerMixin):
 

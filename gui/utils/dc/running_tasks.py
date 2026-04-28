@@ -7,9 +7,11 @@ import threading
 from services.backgound_tasks.reminders_checking import ReminderWorker
 from services.backgound_tasks.rentals_checking import RentalWorker
 from services.backgound_tasks.otp_zip_worker import OTPZipWorker
+from services.backgound_tasks.email import EmailLLMIngestionWorker
 from db.async_redis import AsyncRedisClient
 from db.db import MySQLDatabase
-from websocket.ws_client import QtApplicationSocketClient
+from websocket.redis_event_brodcaster import QtRedisEventBroadcaster 
+from websocket.gmail_push_notification import QtGmailPushNotification
 from services.backgound_tasks.playwright_context_manager.playwright_context_manager import PlayWrightContextManager
 
 class RunningTasks(DataclassBaseModel):
@@ -155,9 +157,11 @@ class RunningTasks(DataclassBaseModel):
         reminder_worker: t.Optional[ReminderWorker] = None,
         rental_worker: t.Optional[RentalWorker] = None,
         otp_zip_worker: t.Optional[OTPZipWorker] = None,
+        email_ingestion_worker: t.Optional[EmailLLMIngestionWorker] = None,
+        gmail_push_notification: t.Optional[QtGmailPushNotification] = None,
         redis_client: t.Optional[AsyncRedisClient] = None,
         playwright_manager: t.Optional[PlayWrightContextManager] = None,
-        websocket_client: t.Optional[QtApplicationSocketClient] = None,
+        redis_event_broadcaster: t.Optional[QtRedisEventBroadcaster] = None,
         db: t.Optional[MySQLDatabase] = None,
         loop: asyncio.AbstractEventLoop = None,
         qt_threads: t.Optional[t.List[object]] = None,
@@ -255,6 +259,57 @@ class RunningTasks(DataclassBaseModel):
                     except Exception as e:   
               
                         log.exception("Exception while waiting OTP zip worker task: %s" % str(e))
+                        
+            if email_ingestion_worker is not None:
+               
+                if not hasattr(email_ingestion_worker, 'stop') or not callable(email_ingestion_worker.stop):
+                  
+                    raise RuntimeError("email_ingestion_worker must have a callable 'stop()' method")
+               
+                email_ingestion_worker.stop()
+              
+                if not hasattr(email_ingestion_worker, "_task"):
+                  
+                    raise RuntimeError("email_ingestion_worker missing '_task' attribute")
+                
+                task = email_ingestion_worker._task
+               
+                if task is not None:
+                    
+                    try:
+                   
+                        await task
+                  
+                    except asyncio.CancelledError:
+                        pass
+                   
+                    except Exception as e:   
+              
+                        log.exception("Exception while waiting email ingestion worker task: %s" % str(e))
+                        
+            if gmail_push_notification is not None and hasattr(gmail_push_notification, 'ssh_tunnel'):
+                
+                try:
+                    
+                    if gmail_push_notification.sio.connected:
+                        
+                        await gmail_push_notification.sio.disconnect()
+                        
+                except Exception as e:
+                    
+                    log.exception("Error disconnecting websocket client: %s" % str(e))
+                
+                reconnect_service = gmail_push_notification.ssh_tunnel.reconnect_service if hasattr(gmail_push_notification.ssh_tunnel, 'reconnect_service') else None
+                
+                if reconnect_service is not None:
+                   
+                    if not hasattr(reconnect_service, "is_running"):
+                        
+                        raise RuntimeError("gmail_push_notification.ssh_tunnel.reconnect_service missing 'is_running' attribute")
+                    
+                    reconnect_service.is_running = False
+                    
+                    gmail_push_notification.ssh_tunnel.stop()
             
             if playwright_manager is not None:
                 
@@ -336,29 +391,29 @@ class RunningTasks(DataclassBaseModel):
                     
                     redis_client.ssh_tunnel.stop()
 
-            if websocket_client is not None and hasattr(websocket_client, 'ssh_tunnel'):
+            if redis_event_broadcaster is not None and hasattr(redis_event_broadcaster, 'ssh_tunnel'):
                 
                 try:
                     
-                    if websocket_client.sio.connected:
+                    if redis_event_broadcaster.sio.connected:
                         
-                        await websocket_client.sio.disconnect()
+                        await redis_event_broadcaster.sio.disconnect()
                         
                 except Exception as e:
                     
                     log.exception("Error disconnecting websocket client: %s" % str(e))
                 
-                reconnect_service = websocket_client.ssh_tunnel.reconnect_service if hasattr(websocket_client.ssh_tunnel, 'reconnect_service') else None
+                reconnect_service = redis_event_broadcaster.ssh_tunnel.reconnect_service if hasattr(redis_event_broadcaster.ssh_tunnel, 'reconnect_service') else None
                 
                 if reconnect_service is not None:
                    
                     if not hasattr(reconnect_service, "is_running"):
                         
-                        raise RuntimeError("websocket_client.ssh_tunnel.reconnect_service missing 'is_running' attribute")
+                        raise RuntimeError("redis_event_broadcaster.ssh_tunnel.reconnect_service missing 'is_running' attribute")
                     
                     reconnect_service.is_running = False
                     
-                    websocket_client.ssh_tunnel.stop()
+                    redis_event_broadcaster.ssh_tunnel.stop()
             
             if self.background_tasks is None:
               

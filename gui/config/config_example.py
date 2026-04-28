@@ -9,9 +9,9 @@ class Config(object):
         is_enabled = False
         host = "0.0.0.0"
         port = 0000
-        namespace = "/example"
+        namespaces = []
         auth_token = ""
-        excluded_models = {"", ""}
+        excluded_models = {}
         folder = "gui/utils/dc/websocket"
         
         class ssh:
@@ -493,7 +493,7 @@ class Config(object):
     class log:
         
         level = "DEBUG"                    
-        file_name = "app.log" 
+        file_name = "Flugi_app.log" 
         path = r""                 
         fmt = "%(asctime)s %(process)d %(processName)s %(threadName)s %(levelname)s %(name)s %(module)s.%(funcName)s:%(lineno)d # %(message)s"
         print_level = 15
@@ -507,7 +507,7 @@ class Config(object):
     class otp_zip_worker:
         
         path = r""
-        passwrd = "password"
+        passwrd = "14515404"
     
     class sumatra_pdf:
         
@@ -661,57 +661,72 @@ class Config(object):
             
             class material:
                 
+                execution_lock = "lock:material_execution"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
-                
+            
             class marine_traffic:
                 
-                exp = 3600
-                        
+                execution_lock = "lock:marine_traffic_execution"
+                exp = 300
+            
             class reminders:
                 
+                execution_lock = "lock:reminders_execution"
                 exp = 3600
-                        
+                
             class tools:
                 
+                execution_lock = "lock:tools_execution"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
-               
+            
             class devices:
                 
+                execution_lock = "lock:devices_execution"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
                 
             class returnable_packaging:
                 
+                execution_lock = "lock:returnable_packaging_execution"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
-            
+                
             class storage:
                 
+                execution_lock = "lock:storage_execution"
                 target = "dropdown"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
                 
             class storage_items:
                 
+                execution_lock = "lock:storage_items_execution"
                 target = "table"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
-                
+
             class tenants:
                 
+                execution_lock = "lock:tenants_execution"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
                 
             class rental_history:
                 
+                execution_lock = "lock:rental_history_execution"
                 exp = 3600
                 
             class fleet:
                 
+                execution_lock = "lock:fleet_execution"
                 id = datetime.now().strftime("%y-%m")
                 exp = 3600
+                
+            class otp_worker:
+                
+                execution_lock = "lock:otp_execution"
                 
     class web_scraper:
         
@@ -726,8 +741,8 @@ class Config(object):
     class marine_traffic:
         
         playwright_dir = r""
-        base_url = "example.com"
-        target_uri = "example.com/ships"
+        base_url = "https://www.marinetraffic.com"
+        target_uri = "https://www.marinetraffic.com/en/global-search/"
         user_agents = [
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",

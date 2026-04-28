@@ -48,10 +48,17 @@ class CalendarContent(QWidget, LoggerMixin):
         
         self.reminder_day_modal = ReminderDayModal()
         
-        self.reminders_cache = CalendarReminderCacheService(
-            redis_client = admin.redis_client,
-            reminder_lock = admin.main_window.app.reminder_lock
-        )
+        if admin.main_window.app.reminder_cache_service is None:
+
+            self.reminders_cache = CalendarReminderCacheService(
+                redis_client = admin.redis_client,
+                reminder_lock = admin.main_window.app.reminder_lock
+            )
+            admin.main_window.app.reminder_cache_service = self.reminders_cache
+            
+        else:
+
+            self.reminders_cache = admin.main_window.app.reminder_cache_service
         
         self.calendar = CustomCalendar()
         
@@ -194,7 +201,7 @@ class CalendarContent(QWidget, LoggerMixin):
                 
                 for item in existing_cache.items:
                     
-                    item_date_py = item.date.date()  # datetime → date
+                    item_date_py = item.date.date()  # datetime -> date
                     
                     if date_py == item_date_py:
                         

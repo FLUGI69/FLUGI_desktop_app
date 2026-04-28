@@ -99,25 +99,53 @@ class StorageView(QWidget, LoggerMixin):
         
         self.reminder_worker = main_window.reminder_worker
         
-        self.material_cache_service = MaterialCacheService(
-            main_window.redis_client,
-            main_window.app.storage_lock
-        )
+        if main_window.app.material_cache_service is None:
+           
+            self.material_cache_service = MaterialCacheService(
+                main_window.redis_client,
+                main_window.app.storage_lock
+            )
+            main_window.app.material_cache_service = self.material_cache_service
         
-        self.tools_cache_service = ToolsCacheService(
-            main_window.redis_client,
-            main_window.app.storage_lock
-        )
+        else:
+           
+            self.material_cache_service = main_window.app.material_cache_service
         
-        self.devices_cache_service = DevicesCacheService(
-            main_window.redis_client,
-            main_window.app.storage_lock
-        )
+        if main_window.app.tools_cache_service is None:
+          
+            self.tools_cache_service = ToolsCacheService(
+                main_window.redis_client,
+                main_window.app.storage_lock
+            )
+            main_window.app.tools_cache_service = self.tools_cache_service
+       
+        else:
+          
+            self.tools_cache_service = main_window.app.tools_cache_service
         
-        self.returnable_cache_service = ReturnablePackagingCacheService(
-            main_window.redis_client,
-            main_window.app.storage_lock
-        )
+        if main_window.app.devices_cache_service is None:
+            
+            self.devices_cache_service = DevicesCacheService(
+                main_window.redis_client,
+                main_window.app.storage_lock
+            )
+            main_window.app.devices_cache_service = self.devices_cache_service
+       
+        else:
+           
+            self.devices_cache_service = main_window.app.devices_cache_service
+        
+        if main_window.app.returnable_packaging_cache_service is None:
+            
+            self.returnable_cache_service = ReturnablePackagingCacheService(
+                main_window.redis_client,
+                main_window.app.storage_lock
+            )
+            main_window.app.returnable_packaging_cache_service = self.returnable_cache_service
+       
+        else:
+         
+            self.returnable_cache_service = main_window.app.returnable_packaging_cache_service
         
         self.confirm_action_modal = ConfirmActionModal(self)
 

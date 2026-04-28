@@ -22,7 +22,7 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QCursor
 
 from utils.handlers.email_content.translate import OpenapiTranslate
-from utils.dc.new_email_data import NewEmailData
+from utils.dc.google.new_email_data import NewEmailData
 from config import Config
 from utils.logger import LoggerMixin
 

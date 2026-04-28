@@ -1,7 +1,7 @@
 .venv/*
 .venv
 *.log
-test/
+tests/
 config.py
 __pycache__/
 exports

@@ -11,7 +11,7 @@ from google.oauth2.credentials import Credentials
 
 from .decorator import RuleDecorator
 from utils.logger import LoggerMixin
-from utils.dc.batch_request import BatchRequestData
+from utils.dc.google.batch_request import BatchRequestData
 from utils.handlers.batch_request import BatchCallbackHandler
 from config import Config
 

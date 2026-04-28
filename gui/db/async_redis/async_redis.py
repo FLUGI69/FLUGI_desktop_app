@@ -10,14 +10,13 @@ import os
 import typing as t
 import types
 import logging
-import time
 
 from utils.logger import LoggerMixin
 from ..network.connections import SSHTunnelConnections, SSHTunnelConnection
 from ..network.reconnect_service import SSHTunnelReconnectService
 from ..network.sshtunnel import SSHTunnel
 from .async_redis_callback import AsyncRedisCallback
-from websocket.ws_client import QtApplicationSocketClient
+from websocket.redis_event_brodcaster import QtRedisEventBroadcaster
 from config import Config
 
 class AsyncRedisClient(LoggerMixin):
@@ -28,7 +27,7 @@ class AsyncRedisClient(LoggerMixin):
         
         self.callback = AsyncRedisCallback(self)
     
-        self.websocket_client: QtApplicationSocketClient = None
+        self.redis_event_broadcaster: QtRedisEventBroadcaster = None
         
         self.client = None
         
@@ -46,8 +45,24 @@ class AsyncRedisClient(LoggerMixin):
         
     def _make_lock_token(self) -> str:
         return "%s:%s:%s" % (socket.gethostname(), os.getpid(), uuid.uuid4().hex)
-    
-    async def _release_owned_lock(self, lock_key: str, token: str) -> bool:
+        
+    async def try_acquire_execution_lock(self, lock_key: str) -> tuple[bool, str]:
+        
+        token = self._make_lock_token()
+
+        acquired = await self.client.set(
+            lock_key,
+            token,
+            ex = 300,
+            nx = True
+        )
+        
+        if acquired is True:
+            return True, token
+        
+        return False, None
+
+    async def release_execution_lock(self, lock_key: str, token: str) -> None:
         
         result = await self.client.eval(
             Config.redis.cache.lock_release_script,
@@ -55,8 +70,22 @@ class AsyncRedisClient(LoggerMixin):
             lock_key,
             token
         )
+
+        released = result == 1
         
-        return result == 1
+        if released == True:
+            
+            self.log.info("Released Redis execution lock (lock key: '%s' released=%s) -> Lock end" % (
+                lock_key,
+                str(released)
+            ))
+            
+        else:
+            
+            self.log.warning("Redis execution lock was not owned by this client (lock key: '%s' released=%s) -> Lock end" % (
+                lock_key,
+                str(released)
+            ))
         
     def encode_for_cache(self, value: t.Any) -> t.Any:
         """
@@ -305,12 +334,12 @@ class AsyncRedisClient(LoggerMixin):
     async def set(self, key, value, ex = None, retries = 3, delay = 2):
         
         result = await self._with_retry("set", key, value, ex = ex, retries = retries, delay = delay)
-        
-        if result is not False and self.websocket_client is not None:
+ 
+        if self.redis_event_broadcaster is not None:
             
             redis_event = await self.callback(key, ex)
             
-            await self.websocket_client.redis_refresh(redis_event)
+            await self.redis_event_broadcaster.redis_refresh(redis_event)
         
         return result
 
@@ -356,82 +385,8 @@ class AsyncRedisClient(LoggerMixin):
                         )
                     )
                     
-                    function_name = method.__name__
-                    
-                    if function_name in ["set", "delete"]:
-   
-                        lock_key = f"lock:{args[0]}"
-                        lock_token = self._make_lock_token()
-    
-                        last_log = time.monotonic()
-                        first_wait = True
-
-                        while True:
-                            
-                            lock_acquired = await self.client.set(
-                                lock_key, 
-                                lock_token, 
-                                ex = 10, 
-                                nx = True
-                            )
-                                                        
-                            if lock_acquired == True:
-                                
-                                self.log.debug("Acquired lock for key %s (lock key: '%s') performing %s operation -> Lock begin" % (
-                                    str(self.make_readable_cache_log(args)), 
-                                    lock_key,
-                                    function_name
-                                ))
-                                
-                                try: 
-                                    
-                                    filtered_kwargs = dict(kwargs)
-                                    
-                                    if function_name == "set" and "nx" in filtered_kwargs:
-                                        filtered_kwargs["nx"] = True
-                                        
-                                    else:
-                                        filtered_kwargs.pop("nx", None)
-                                    
-                                    return await method(*args, **filtered_kwargs)
-                                
-                                except Exception as e:
-                                    
-                                    self.log.exception("Exception in handle_racing_condition: %s" % str(e))
-                                    raise
-                                
-                                finally:
-                                    
-                                    released = await self._release_owned_lock(
-                                        lock_key, lock_token
-                                    )
- 
-                                    self.log.info("Released lock for key %s (lock key: '%s' released=%s) -> Lock end" % (
-                                        str(self.make_readable_cache_log(args)), 
-                                        lock_key,
-                                        str(released)
-                                    ))
-                                    
-                            else:
-                                
-                                now = time.monotonic()
-                                
-                                if first_wait == True or now - last_log >= 5:
-                                    
-                                    self.log.debug("Waiting for lock on key %s (lock key: '%s') to be released -> Lock wait" % (
-                                        str(self.make_readable_cache_log(args)), 
-                                        lock_key
-                                    ))
-                                    
-                                    last_log = now
-                                    first_wait = False
-                                
-                                await asyncio.sleep(0.1)
-
-                    else:     
-                           
-                        return await method(*args, **kwargs)
-
+                    return await method(*args, **kwargs)
+                       
             except (RedisConnectionError, ConnectionResetError) as e:
                 
                 self.log.warning("Redis '%s' failed on attempt %s: %s" % (

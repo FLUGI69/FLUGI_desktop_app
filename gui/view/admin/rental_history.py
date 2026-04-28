@@ -50,10 +50,17 @@ class RentalHistoryContent(QWidget, LoggerMixin):
         
         self.cache_data: RentalHistoryCacheData | None = None
         
-        self.rental_history_cache = RentalHistoryCacheService(
-            redis_client = admin_view.redis_client,
-            rental_lock = admin_view.main_window.app.rental_lock
-        )
+        if admin_view.main_window.app.rental_history_cache_service is None:
+            
+            self.rental_history_cache = RentalHistoryCacheService(
+                redis_client = admin_view.redis_client,
+                rental_lock = admin_view.main_window.app.rental_lock
+            )
+            admin_view.main_window.app.rental_history_cache_service = self.rental_history_cache
+        
+        else:
+           
+            self.rental_history_cache = admin_view.main_window.app.rental_history_cache_service
         
         self.confirm_action_modal = ConfirmActionModal()
         

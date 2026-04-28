@@ -4,7 +4,7 @@ import logging
 
 from utils.logger import LoggerMixin
 
-class QthreadManager(QThread, LoggerMixin):
+class QThreadManager(QThread, LoggerMixin):
     
     log: logging.Logger
 

@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDateTime, QDate, QTime, QTimer, pyqtSignal
 from PyQt6.QtGui import QCursor
 
+from services.material_datatable_cache import MaterialCacheService
 from utils.logger import LoggerMixin
 from utils.dc.admin.work.boat_search import AdminBoatData
 from utils.dc.admin.work.edit import AdminEditWorkData 
@@ -58,14 +59,22 @@ class AdminWorksContent(QWidget, LoggerMixin):
         if admin_view.main_window.storage_view is not None:
             
             self.storage_view = admin_view.main_window.storage_view
-
-            self.material_cache_service = admin_view.main_window.storage_view.material_cache_service
             
         else:
             
             self.storage_view = admin_view.main_window.get_storage_view()
- 
-            self.material_cache_service = self.storage_view.material_cache_service
+            
+        if admin_view.main_window.app.material_cache_service is None:
+           
+            self.material_cache_service = MaterialCacheService(
+                admin_view.main_window.redis_client,
+                admin_view.main_window.app.storage_lock
+            )
+            admin_view.main_window.app.material_cache_service = self.material_cache_service
+        
+        else:
+           
+            self.material_cache_service = admin_view.main_window.app.material_cache_service
         
         self.spinner = admin_view.main_window.app.spinner
         

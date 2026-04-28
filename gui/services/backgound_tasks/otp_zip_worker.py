@@ -24,7 +24,7 @@ import time
 from config import Config
 from db.async_redis.async_redis import AsyncRedisClient
 from utils.logger import LoggerMixin
-from utils.dc.gmail_response_data import MessagePart
+from utils.dc.google.gmail_response_data import MessagePart
 from routes.api.google import EmailMessagesView, EmailMessageView
 from db import queries
 
@@ -35,8 +35,6 @@ class OTPZipWorker(QObject, LoggerMixin):
     
     log: logging.Logger
     
-    finished = pyqtSignal()
-
     def __init__(self,
         user_client: 'UserClientView',
         redis_client: AsyncRedisClient,
@@ -556,19 +554,10 @@ class OTPZipWorker(QObject, LoggerMixin):
         return safe
 
     def _lock_key(self) -> str:
-        return "lock:otp_execution"
+        return Config.redis.cache.otp_worker.execution_lock
     
     def _make_lock_token(self) -> str:
         return "%s:%s:%s" % (socket.gethostname(), os.getpid(), uuid.uuid4().hex)
-
-    async def _is_execution_locked(self) -> bool:
-        
-        current = await self.redis_client.client.get(self._lock_key())
-        
-        if current is None:
-            return False
-        
-        return True
 
     async def _try_acquire_execution_lock(self) -> bool:
         
@@ -733,8 +722,3 @@ class OTPZipWorker(QObject, LoggerMixin):
 
         except asyncio.CancelledError:
             raise
-        
-        finally:
-            
-            self.finished.emit()
-    

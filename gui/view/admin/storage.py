@@ -69,16 +69,30 @@ class AdminStorageContent(QWidget, LoggerMixin):
         
         self.storage_cache_data: StorageCacheData | None = None
         
-        self.storage_cache = StorageCacheService(
-            redis_client = admin.redis_client,
-            admin_storage_lock = admin.main_window.app.admin_storage_lock
-        )
+        if admin.main_window.app.storage_cache_service is None:
+            
+            self.storage_cache = StorageCacheService(
+                redis_client = admin.redis_client,
+                admin_storage_lock = admin.main_window.app.admin_storage_lock
+            )
+            admin.main_window.app.storage_cache_service = self.storage_cache
+      
+        else:
+           
+            self.storage_cache = admin.main_window.app.storage_cache_service
         
-        self.storage_datatable_cache = AdminStorageItemsCacheService(
-            redis_client = admin.redis_client,
-            admin_storage_lock = admin.main_window.app.admin_storage_lock
-        )
-        
+        if admin.main_window.app.storage_items_cache_service is None:
+           
+            self.storage_datatable_cache = AdminStorageItemsCacheService(
+                redis_client = admin.redis_client,
+                admin_storage_lock = admin.main_window.app.admin_storage_lock
+            )
+            admin.main_window.app.storage_items_cache_service = self.storage_datatable_cache
+       
+        else:
+           
+            self.storage_datatable_cache = admin.main_window.app.storage_items_cache_service
+            
         self.storage_table = StorageTable(self)
         
         self.add_storage_modal = AddStorageModal(self)

@@ -62,10 +62,17 @@ class TenantsContent(QWidget, LoggerMixin):
         
         self.tenant_cache_data: AdminTenantsCacheData | None = None
         
-        self.tenant_datatable_cache = AdminTenantsCacheService(
-            redis_client = admin.redis_client,
-            rental_lock = admin.main_window.app.rental_lock
+        if admin.main_window.app.tenant_cache_service is None:
+            
+            self.tenant_datatable_cache = AdminTenantsCacheService(
+                redis_client = admin.redis_client,
+                rental_lock = admin.main_window.app.rental_lock
             )
+            admin.main_window.app.tenant_cache_service = self.tenant_datatable_cache
+       
+        else:
+          
+            self.tenant_datatable_cache = admin.main_window.app.tenant_cache_service
         
         self.previous_tenants: TenantData | None = None
         

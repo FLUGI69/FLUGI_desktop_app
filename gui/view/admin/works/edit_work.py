@@ -829,37 +829,47 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
                     exp = Config.redis.cache.material.exp
                 )
                 
-                available_materials = self.filtering_list_with_reference_data(
-                    check_deleted = False,
-                    previous_data = previous_available_material.items,
-                    modified_list = self.available_materials.items
-                )
-            
-                deleted_available_material = self.filtering_list_with_reference_data(
-                    check_deleted = True,
-                    previous_data = previous_available_material.items,
-                    modified_list = self.available_materials.items
-                )
+                if len(previous_available_material.items) > 0:
+                    
+                    available_materials = self.filtering_list_with_reference_data(
+                        check_deleted = False,
+                        previous_data = previous_available_material.items,
+                        modified_list = self.available_materials.items
+                    )
+                
+                    deleted_available_material = self.filtering_list_with_reference_data(
+                        check_deleted = True,
+                        previous_data = previous_available_material.items,
+                        modified_list = self.available_materials.items
+                    )
 
-                await self.handle_update_work(
-                    leader = leader,
-                    order_date = order_date,
-                    description = description,
-                    prev_transfered = self.previous_admin_work_data.transfered,
-                    transfered = transfered,
-                    is_contractor = is_contractor,
-                    start_date = start_date,
-                    finished_date = finished_date,
-                    new_note = new_note,
-                    attached_images_path = attached_images_path,
-                    work_accessories = work_accessories,
-                    deleted_work_material = deleted_work_material,
-                    available_materials = available_materials,
-                    deleted_available_material = deleted_available_material,
-                    changed_notes = self.changed_notes,
-                    deleted_img_bytes = self.deleted_img_bytes
-                )
-            
+                    await self.handle_update_work(
+                        leader = leader,
+                        order_date = order_date,
+                        description = description,
+                        prev_transfered = self.previous_admin_work_data.transfered,
+                        transfered = transfered,
+                        is_contractor = is_contractor,
+                        start_date = start_date,
+                        finished_date = finished_date,
+                        new_note = new_note,
+                        attached_images_path = attached_images_path,
+                        work_accessories = work_accessories,
+                        deleted_work_material = deleted_work_material,
+                        available_materials = available_materials,
+                        deleted_available_material = deleted_available_material,
+                        changed_notes = self.changed_notes,
+                        deleted_img_bytes = self.deleted_img_bytes
+                    )
+
+                else:
+                    
+                    self.form_error_label.setText("Nem sikerült lekérni a raktár anyag adatokat a gyorsítótárból. Nem mentődtek el a módosítások.")
+                    self.form_error_label.setVisible(True)
+                    
+                    scroll_bar = self.scroll_area.verticalScrollBar()
+                    scroll_bar.setValue(scroll_bar.maximum())
+                
             else:
                 
                 self.form_error_label.setText("Nem választottál ki munkát a módosításhoz")
@@ -1623,10 +1633,10 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
         - `self.work_accessories.items` (materials assigned to the work)
 
         The direction of the operation is determined by the `is_on_work_btn` flag:
-        - True  → remove material from the work list and return it to the warehouse
-                (work_accessories.items → available_materials.items)
-        - False → add material to the work list
-                (available_materials.items → work_accessories.items)
+        - True  -> remove material from the work list and return it to the warehouse
+                (work_accessories.items -> available_materials.items)
+        - False -> add material to the work list
+                (available_materials.items -> work_accessories.items)
 
         Important notes about the `material` parameter:
         - This is the exact MaterialData object stored in the source list (either warehouse or work list),
@@ -1654,8 +1664,8 @@ class AdminEditWorkContent(QWidget, LoggerMixin):
 
         is_on_work_btn : bool
             Determines the direction of transfer:
-            - True  → move material from work list to warehouse
-            - False → move material from warehouse to work list
+            - True  -> move material from work list to warehouse
+            - False -> move material from warehouse to work list
         """
         current_quantity = spin_box.value()
         

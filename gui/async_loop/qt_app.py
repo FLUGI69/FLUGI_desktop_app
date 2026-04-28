@@ -25,11 +25,23 @@ from services.backgound_tasks.reminders_checking import ReminderWorker
 from services.backgound_tasks.rentals_checking import RentalWorker
 from utils.dc.running_tasks import RunningTasks
 from utils.handlers.math import UtilityCalculator
-from services.qthread_manager import QthreadManager
+from services.qthread_manager import QThreadManager
 from utils.handlers.spinner import Spinner
-from websocket.ws_client import QtApplicationSocketClient
+from websocket.redis_event_brodcaster import QtRedisEventBroadcaster 
 from services.backgound_tasks.otp_zip_worker import OTPZipWorker
+from services.backgound_tasks.email import EmailLLMIngestionWorker
 from services.backgound_tasks.playwright_context_manager import PlayWrightContextManager
+from websocket.gmail_push_notification import QtGmailPushNotification
+from services.admin.calendar_reminder_cache import CalendarReminderCacheService
+from services.admin.fleet_cache import FleetCacheService
+from services.admin.rental_history_cache import RentalHistoryCacheService
+from services.admin.storage_dropdown_cache import StorageCacheService
+from services.admin.storage_datatable_cache import AdminStorageItemsCacheService
+from services.admin.tenant_datatable_cache import AdminTenantsCacheService
+from services.material_datatable_cache import MaterialCacheService
+from services.devices_datatable_cache import DevicesCacheService
+from services.tools_datatable_cache import ToolsCacheService
+from services.returnable_packaging_cache import ReturnablePackagingCacheService
 from config import Config
 
 Callback = t.Callable[["QtApplication"], t.Awaitable[None] | None]
@@ -41,11 +53,15 @@ class QtApplication(LoggerMixin):
     def __init__(self, 
         app: QApplication | None = None
         ) -> None:
-
-        self.templates: t.Dict[str, Template] = {}
         
         self.app = app
         
+        self._qt_threads = []
+        self.qthread_manager = QThreadManager(app_ref = self)
+        self.qthread_manager.start()
+
+        self.templates: t.Dict[str, Template] = {}
+
         self.playwright_manager = PlayWrightContextManager(self)
         
         self.mnb_client = Mnb()
@@ -57,13 +73,7 @@ class QtApplication(LoggerMixin):
         self.datatable_helper = DataTableHelper()
         
         self.spinner = Spinner(Config.gif.spinner)
-        
-        self._qt_threads = []
-        
-        self.qthread_manager = QthreadManager(app_ref = self)
-        
-        self.qthread_manager.start()
-        
+
         self._shutdown_complete = asyncio.Event()
         
         self.storage_lock = asyncio.Lock()
@@ -91,6 +101,9 @@ class QtApplication(LoggerMixin):
             auto_create_db = True,
             auto_create_tables = True,
             auto_add_new_columns = True,
+            create_audit_log = True, 
+            unified_audit_log_table = True, 
+            audit_log_ignore_tables = ["work_accessories", "token_scope"], 
             general_log = False,
             query_timer = True,
             session = True,
@@ -104,7 +117,21 @@ class QtApplication(LoggerMixin):
         
         self.otp_zip_worker: OTPZipWorker | None = None
         
-        self.websocket_client: QtApplicationSocketClient = None
+        self.reminder_cache_service: CalendarReminderCacheService | None = None
+        self.fleet_cache_service: FleetCacheService | None = None
+        self.rental_history_cache_service: RentalHistoryCacheService | None = None
+        self.storage_cache_service: StorageCacheService | None = None
+        self.storage_items_cache_service: AdminStorageItemsCacheService | None = None
+        self.tenant_cache_service: AdminTenantsCacheService | None = None
+        self.material_cache_service: MaterialCacheService | None = None
+        self.devices_cache_service: DevicesCacheService | None = None
+        self.tools_cache_service: ToolsCacheService | None = None
+        self.returnable_packaging_cache_service: ReturnablePackagingCacheService | None = None
+
+        self.redis_event_broadcaster: QtRedisEventBroadcaster = None
+        
+        self.gmail_push_notification: QtGmailPushNotification = None
+        self.email_ingestion_worker: EmailLLMIngestionWorker | None = None
     
         self.openai = AsyncOpenAI(api_key = Config.openapi.key)
         
@@ -155,7 +182,7 @@ class QtApplication(LoggerMixin):
 
         signal.signal(signal.SIGINT, lambda *_: QCoreApplication.quit())
         signal.signal(signal.SIGTERM, lambda *_: QCoreApplication.quit())
-   
+            
     def _handle_loop_exception(self, loop: asyncio.AbstractEventLoop, context: dict) -> None:
         
         try:
@@ -188,10 +215,10 @@ class QtApplication(LoggerMixin):
         ]) -> asyncio.Task:
         """
         Accepts:
-          - a coroutine function to be called later 
-            (e.g. self.add_background_task(self.websocket_client.setup_websocket))
-          - an already invoked coroutine object 
-            (e.g. self.add_background_task(self.websocket_client.setup_websocket(...)))
+            - a coroutine function to be called later 
+            (e.g. self.add_background_task(self.redis_event_broadcaster.setup_websocket_event))
+            - an already invoked coroutine object 
+            (e.g. self.add_background_task(self.redis_event_broadcaster.setup_websocket_event(...)))
         """
         
         if inspect.iscoroutine(coro_or_fn):
@@ -241,12 +268,14 @@ class QtApplication(LoggerMixin):
                 if self.utility_calculator is not None:
                     
                     self.rental_worker = RentalWorker(
+                        app = self,
                         redis_client = self.redis_client,
                         rental_lock = self.rental_lock,
                         utility_calculator = self.utility_calculator
                     )
                     
                     self.reminder_worker = ReminderWorker(
+                        app = self,
                         redis_client = self.redis_client,
                         reminder_lock = self.reminder_lock,
                         utility_calculator = self.utility_calculator
@@ -262,12 +291,12 @@ class QtApplication(LoggerMixin):
 
                     if self.websocket_enabled == True:
                     
-                        self.websocket_client = QtApplicationSocketClient(
+                        self.redis_event_broadcaster = QtRedisEventBroadcaster(
                             app = self,
-                            namespace = Config.websocket.namespace
+                            namespace = Config.websocket.namespaces[0]
                         )
                         
-                        self.add_background_task(self.websocket_client.setup_websocket(
+                        self.add_background_task(self.redis_event_broadcaster.setup_websocket_event(
                             host = Config.websocket.host,
                             port =  Config.websocket.port,
                             auth_token = Config.websocket.auth_token,
@@ -279,7 +308,7 @@ class QtApplication(LoggerMixin):
                             )
                         )
 
-                        self.redis_client.websocket_client = self.websocket_client
+                        self.redis_client.redis_event_broadcaster = self.redis_event_broadcaster
                         
             else:
                 
@@ -327,9 +356,11 @@ class QtApplication(LoggerMixin):
                 reminder_worker = getattr(self, 'reminder_worker', None),
                 rental_worker = getattr(self, 'rental_worker', None),
                 otp_zip_worker = getattr(self, 'otp_zip_worker', None),
+                email_ingestion_worker = getattr(self, 'email_ingestion_worker', None),
+                gmail_push_notification = getattr(self, 'gmail_push_notification', None),
                 redis_client = getattr(self, "redis_client", None),
                 playwright_manager = getattr(self, "playwright_manager", None),
-                websocket_client = getattr(self, "websocket_client", None),
+                redis_event_broadcaster = getattr(self, "redis_event_broadcaster", None),
                 db = getattr(self, "db", None),
                 loop = getattr(self, "loop", None)
             )

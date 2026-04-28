@@ -21,7 +21,7 @@ if t.TYPE_CHECKING:
     
     from async_loop import QtApplication
     
-class QtApplicationSocketClient(LoggerMixin):
+class QtRedisEventBroadcaster(LoggerMixin):
     
     log: logging.Logger
     
@@ -260,7 +260,7 @@ class QtApplicationSocketClient(LoggerMixin):
                                     )
                                 )
          
-    async def setup_websocket(self,
+    async def setup_websocket_event(self,
         host: str,
         port: str,
         auth_token: str,

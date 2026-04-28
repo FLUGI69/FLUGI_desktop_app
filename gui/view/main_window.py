@@ -104,11 +104,18 @@ class MainWindow(QMainWindow, LoggerMixin):
         
         self.redis_client = app.redis_client
         
-        self.reminder_cache = CalendarReminderCacheService(
-            redis_client = app.redis_client,
-            reminder_lock = app.reminder_lock
-        )
-     
+        if app.reminder_cache_service is None:
+          
+            self.reminder_cache = CalendarReminderCacheService(
+                redis_client = app.redis_client,
+                reminder_lock = app.reminder_lock
+            )
+            app.reminder_cache_service = self.reminder_cache
+        
+        else:
+            
+            self.reminder_cache = app.reminder_cache_service    
+             
         self.reminder_day = None
         
         self._active_reminder_modal: ReminderAlertModal | None = None
@@ -388,9 +395,9 @@ class MainWindow(QMainWindow, LoggerMixin):
 
     async def _emit_reminder_action(self, reminder_id: int, action: str, calendar_cache_id: str):
         
-        ws_client = self.app.websocket_client
+        redis_event_broadcaster = self.app.redis_event_broadcaster if hasattr(self.app, 'redis_event_broadcaster') else None
         
-        if ws_client is not None:
+        if redis_event_broadcaster is not None:
             
             reminder_event = ReminderEvent(
                 reminder_id = reminder_id,
@@ -400,7 +407,7 @@ class MainWindow(QMainWindow, LoggerMixin):
             
             self.log.info("Emitting reminder_action via websocket: %s" % str(reminder_event))
             
-            await ws_client.reminder_action(reminder_event)
+            await redis_event_broadcaster.reminder_action(reminder_event)
 
     async def handle_remote_reminder_action(self, reminder_event: ReminderEvent):
         

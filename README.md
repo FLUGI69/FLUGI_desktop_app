@@ -275,12 +275,12 @@ When the application starts and calls `connect_database()`, the sync engine perf
 2. **`checkMysqlExist()`**: Checks if the actual MySQL database exists. If not, and `auto_create_db=True`, it creates the database.
 
 3. **`initTables()`**: For each table in the metadata dict:
-   - Uses SQLAlchemy `Inspector` to get the list of tables that actually exist in the database.
-   - **If a table is missing** and `auto_create_tables=True` → creates it automatically.
-   - **If a table exists** → calls `check_and_add_columns()`:
-     - Compares the columns defined in the Python model against the actual columns in the database.
-     - **If a column is missing** and `auto_add_new_columns=True` → adds it with `ALTER TABLE`.
-     - **If `check_column_parameters=True`** → additionally validates column type, nullable, primary key, and autoincrement between the model definition and the actual database column.
+	- Uses SQLAlchemy `Inspector` to get the list of tables that actually exist in the database.
+	- **If a table is missing** and `auto_create_tables=True` -> creates it automatically.
+	- **If a table exists** -> calls `check_and_add_columns()`:
+    	- Compares the columns defined in the Python model against the actual columns in the database.
+    	- **If a column is missing** and `auto_add_new_columns=True` -> adds it with `ALTER TABLE`.
+    	- **If `check_column_parameters=True`** -> additionally validates column type, nullable, primary key, and autoincrement between the model definition and the actual database column.
 
 This means the database schema always stays in sync with the Python model definitions, without needing manual migrations.
 
@@ -296,10 +296,10 @@ During `connect_database()`, after schema validation, `import_queries()` is call
 - For each `.py` file found, dynamically imports it using `pylibimport`.
 - Inspects every attribute in the module.
 - If an attribute is a class that inherits from `AsyncQueryBase`:
-  - Instantiates it with `attribute(db=self)` to verify it works.
-  - Wraps it in `AsyncQueryCallback(db=self, query_attr=attribute)`.
-  - Registers it on the global `Queries` instance via `setattr(self.queries, attribute.__name__, ...)`.
-  - Sets `__set_async_engine = True` → which triggers async engine creation.
+	- Instantiates it with `attribute(db=self)` to verify it works.
+	- Wraps it in `AsyncQueryCallback(db=self, query_attr=attribute)`.
+	- Registers it on the global `Queries` instance via `setattr(self.queries, attribute.__name__, ...)`.
+	- Sets `__set_async_engine = True` -> which triggers async engine creation.
 - The same pattern applies for `QueryBase` (sync variant), wrapped in `QueryCallback`.
 
 **Key constraint**: `attribute.__name__` (the class name) must match the module file name. This is enforced by the check `attribute.__name__ == module_name`.
@@ -310,9 +310,9 @@ After all queries are imported, the system runs a reference check against the st
 
 - **For each stub function** defined in the `queries` module `__init__.py`: if it does not have a corresponding imported query on `self.queries`, an error is logged telling you to remove the orphaned stub.
 - **For each imported query** on `self.queries`: if there is no matching stub function in `queries.__init__.py`, the system:
-  - Inspects the query's `query()` method signature (parameter names, types, return type, async/sync).
-  - Auto-generates the exact stub function signature.
-  - Logs an error showing the exact code to add to `__init__.py`.
+	- Inspects the query's `query()` method signature (parameter names, types, return type, async/sync).
+	- Auto-generates the exact stub function signature.
+	- Logs an error showing the exact code to add to `__init__.py`.
 - Finally, it overwrites the stub with the real `AsyncQueryCallback` using `setattr(queries, query_name, query_callback)`. This is why at runtime `queries.select_tenant()` calls the actual query.
 
 **3. Stubs in `gui/db/queries/__init__.py`**
@@ -350,10 +350,10 @@ The `AsyncQueryBase.__call__` method:
 This means the full call chain is:
 ```
 queries.select_tenant(item_id=5)
-  → AsyncQueryCallback.__call__(item_id=5)
-    → select_tenant(db=self.db)  # fresh instance
-      → AsyncQueryBase.__call__(item_id=5)  # opens session
-        → select_tenant.query(item_id=5)  # actual SQL
+	-> AsyncQueryCallback.__call__(item_id=5)
+		-> select_tenant(db=self.db)  # fresh instance
+    		-> AsyncQueryBase.__call__(item_id=5)  # opens session
+    			-> select_tenant.query(item_id=5)  # actual SQL
 ```
 
 **Why This Architecture?**
@@ -475,11 +475,11 @@ The application expects `gui/config/config.py` to exist and contain valid runtim
 1. Use `gui/config/config_example.py` as your reference.
 2. Ensure every required class/attribute exists in `config.py`.
 3. Provide local values for:
-	 - database credentials
-	 - redis settings
-	 - websocket settings
-	 - launcher/update endpoint settings
-	 - file paths and style config
+	- database credentials
+	- redis settings
+	- websocket settings
+	- launcher/update endpoint settings
+	- file paths and style config
 
 Important:
 

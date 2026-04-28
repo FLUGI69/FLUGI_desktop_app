@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 from sqlalchemy import sql, Column, text, func, select, Enum, Engine, create_engine
 from sqlalchemy import inspect, Inspector
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
@@ -20,6 +21,7 @@ from types import ModuleType
 import logging
 
 from utils.logger import LoggerMixin
+from .table_base import SetupTables
 from .async_query_base import AsyncQueryBase, AsyncQueryCallback
 from .query_base import QueryBase, QueryCallback
 from .async_session import AsyncSessionMaker, AsyncSession
@@ -46,6 +48,9 @@ class MySQLDatabase(LoggerMixin):
         auto_create_db: bool = False, 
         auto_create_tables: bool = False, 
         auto_add_new_columns: bool = False,
+        create_audit_log: bool = False, 
+        unified_audit_log_table: bool = False, 
+        audit_log_ignore_tables: list = [], 
         general_log: bool = False,
         query_timer: bool = True,
         session: bool = True,
@@ -99,6 +104,10 @@ class MySQLDatabase(LoggerMixin):
         
         self.queries = Queries()
         
+        self.createAuditLog = create_audit_log
+        self.unifiedAuditLogTable = unified_audit_log_table
+        self.auditLogIgnoreTables = audit_log_ignore_tables
+
         self.general_log = general_log
         
         self.encoding = encoding
@@ -249,6 +258,362 @@ class MySQLDatabase(LoggerMixin):
         else:
            
             self.check_and_add_columns(inspector, table_name)
+            
+        self.initTableAuditLog(inspector, table_name)
+            
+    def initTableAuditLog(self, inspector: Inspector, table_name: str):
+
+        self.log.debug("Mysql init '%s' table audit log" % (str(table_name)))
+
+        if self.createAuditLog == True:
+
+            # print(table_name)
+
+            if self.unifiedAuditLogTable == True:
+                audit_log_table_name = 'audit_log'
+            else:
+                audit_log_table_name = "%s_audit_log" % (str(table_name))
+
+            if "audit_log" in table_name or audit_log_table_name == table_name or table_name in self.auditLogIgnoreTables:
+                return
+            
+            table_class = self.get_table_by_name(table_name)
+
+            triggers = {}
+
+            autoincrement_primary_key_name = None
+
+            for column in table_class.columns:
+
+                if column.primary_key == True and column.autoincrement == True:
+                    autoincrement_primary_key_name = column.name
+                    break
+
+            if autoincrement_primary_key_name is not None:
+
+                _tables = dict(self.tableBase.metadata.tables).copy()
+
+                # print(_tables.keys())
+
+                if audit_log_table_name not in list(_tables.keys()):
+    
+                    audit_log_table = SetupTables.audit_log(self.tableBase, audit_log_table_name, self.sqlType, self.unifiedAuditLogTable)
+                  
+                    db_tables = inspector.get_table_names()
+                    
+                    if audit_log_table_name not in db_tables:
+
+                        if self.unifiedAuditLogTable == True:
+                            self.log.warning("'%s' database -> Create audit log table: %s" % (
+                                str(self.__dbName),
+                                str(audit_log_table_name),
+                                ))
+                        else:
+                            self.log.warning("'%s' database -> Create audit log table for '%s' table: %s" % (
+                                str(self.__dbName),
+                                str(table_name),
+                                str(audit_log_table_name),
+                                ))
+
+                        audit_log_table.__table__.create(bind = self.engine)
+
+                        # BEGIN UPDATE DISABLE TRIGGER
+
+                        update_disable_trigger_name = '%s_update_disable' % (str(audit_log_table_name))
+
+                        self.log.warning("'%s' database -> '%s' table -> Create '%s' trigger!" % (
+                            str(self.__dbName),
+                            str(audit_log_table_name),
+                            str(update_disable_trigger_name),
+                            ))
+
+                        update_disable_trigger_statement = "BEGIN\r\n\t"
+
+                        update_disable_trigger_statement += "SIGNAL SQLSTATE VALUE '45000' SET MESSAGE_TEXT = 'UPDATE Disabled';"
+
+                        update_disable_trigger_statement += "\r\nEND"
+
+                        # Remove multiple spaces
+                        update_disable_trigger_statement = re.sub(r' +', ' ', update_disable_trigger_statement)
+
+                        create_update_disable_trigger_query = f"""
+                        CREATE TRIGGER {update_disable_trigger_name}
+                        BEFORE UPDATE ON `{audit_log_table_name}` 
+                        FOR EACH ROW {update_disable_trigger_statement}
+                        """
+                        
+                        with self.engine.connect() as conn:
+                            conn.execute(text(create_update_disable_trigger_query))
+
+                        # END UPDATE DISABLE TRIGGER
+
+                        # BEGIN DELETE DISABLE TRIGGER
+
+                        delete_disable_trigger_name = '%s_delete_disable' % (str(audit_log_table_name))
+
+                        self.log.warning("'%s' database -> '%s' table -> Create '%s' trigger!" % (
+                            str(self.__dbName),
+                            str(audit_log_table_name),
+                            str(delete_disable_trigger_name),
+                            ))
+
+                        delete_disable_trigger_statement = "BEGIN\r\n\t"
+
+                        delete_disable_trigger_statement += "SIGNAL SQLSTATE VALUE '45001' SET MESSAGE_TEXT = 'DELETE Disabled';"
+
+                        delete_disable_trigger_statement += "\r\nEND"
+
+                        # Remove multiple spaces
+                        delete_disable_trigger_statement = re.sub(r' +', ' ', delete_disable_trigger_statement)
+
+                        create_delete_disable_trigger_query = f"""
+                        CREATE TRIGGER {delete_disable_trigger_name}
+                        BEFORE DELETE ON `{audit_log_table_name}` 
+                        FOR EACH ROW {delete_disable_trigger_statement}
+                        """
+
+                        with self.engine.connect() as conn:
+                            conn.execute(text(create_delete_disable_trigger_query))
+
+                        # END DELETE DISABLE TRIGGER
+
+                update_statement_part_list = []
+                insert_statement_part_list = []
+                delete_statement_part_list = []
+
+                for column in table_class.columns:
+                    column: Column
+
+                    if column.primary_key == False:
+
+                        update_statement_part = f"""
+                            IF (OLD.{column.name} <> NEW.{column.name} AND '{column.type}' <> 'BLOB' AND '{column.type}' <> 'LONGBLOB') THEN
+
+                                INSERT INTO {audit_log_table_name} (
+                                    {audit_log_table_name + '.table_name,' if self.unifiedAuditLogTable == True else ""}
+                                    {audit_log_table_name}.row_id,
+                                    {audit_log_table_name}.column_name,
+                                    {audit_log_table_name}.dml_type,
+                                    {audit_log_table_name}.old_value,
+                                    {audit_log_table_name}.new_value,
+                                    {audit_log_table_name}.done_by,
+                                    {audit_log_table_name}.done_at
+                                ) 
+                                VALUES (
+                                    {"'%s'," % (str(table_name)) if self.unifiedAuditLogTable == True else ""}
+                                    NEW.{autoincrement_primary_key_name},
+                                    '{column.name}',
+                                    'UPDATE',
+                                    OLD.{column.name},
+                                    NEW.{column.name},
+                                    USER(),
+                                    CURRENT_TIMESTAMP
+                                );
+                                
+                            END IF;
+                        """
+
+                        update_statement_part_list.append(update_statement_part)
+
+                        insert_statement_part = f"""
+                            IF (NEW.{column.name} IS NOT NULL AND '{column.type}' <> 'BLOB' AND '{column.type}' <> 'LONGBLOB') THEN
+
+                                INSERT INTO {audit_log_table_name} (
+                                    {audit_log_table_name + '.table_name,' if self.unifiedAuditLogTable == True else ""}
+                                    {audit_log_table_name}.row_id,
+                                    {audit_log_table_name}.column_name,
+                                    {audit_log_table_name}.dml_type,
+                                    {audit_log_table_name}.new_value,
+                                    {audit_log_table_name}.done_by,
+                                    {audit_log_table_name}.done_at
+                                ) 
+                                VALUES (
+                                    {"'%s'," % (str(table_name)) if self.unifiedAuditLogTable == True else ""}
+                                    NEW.{autoincrement_primary_key_name},
+                                    '{column.name}',
+                                    'INSERT',
+                                    NEW.{column.name},
+                                    USER(),
+                                    CURRENT_TIMESTAMP
+                                );
+                                
+                            END IF;
+                        """
+
+                        insert_statement_part_list.append(insert_statement_part)
+
+                        delete_statement_part = f"""
+                            IF (OLD.{column.name} IS NOT NULL AND '{column.type}' <> 'BLOB' AND '{column.type}' <> 'LONGBLOB') THEN
+
+                                INSERT INTO {audit_log_table_name} (
+                                    {audit_log_table_name + '.table_name,' if self.unifiedAuditLogTable == True else ""}
+                                    {audit_log_table_name}.row_id,
+                                    {audit_log_table_name}.column_name,
+                                    {audit_log_table_name}.dml_type,
+                                    {audit_log_table_name}.old_value,
+                                    {audit_log_table_name}.done_by,
+                                    {audit_log_table_name}.done_at
+                                ) 
+                                VALUES (
+                                    {"'%s'," % (str(table_name)) if self.unifiedAuditLogTable == True else ""}
+                                    OLD.{autoincrement_primary_key_name},
+                                    '{column.name}',
+                                    'DELETE',
+                                    OLD.{column.name},
+                                    USER(),
+                                    CURRENT_TIMESTAMP
+                                );
+                                
+                            END IF;
+                        """
+
+                        delete_statement_part_list.append(delete_statement_part)
+
+                if len(update_statement_part_list) > 0:
+
+                    update_trigger_statement = "BEGIN\r\n\t"
+
+                    for item in update_statement_part_list:
+
+                        update_trigger_statement += item
+
+                    update_trigger_statement += "\r\nEND"
+
+                    # Remove multiple spaces
+                    update_trigger_statement = re.sub(r' +', ' ', update_trigger_statement)
+
+                    # print(update_trigger_statement)
+                    triggers['UPDATE'] = {}
+                    triggers['UPDATE']['trigger_name'] = '%s_update_audit_trigger' % (str(table_name))
+                    triggers['UPDATE']['statement'] = update_trigger_statement
+
+                if len(insert_statement_part_list) > 0:
+
+                    insert_trigger_statement = "BEGIN\r\n\t"
+
+                    for item in insert_statement_part_list:
+
+                        insert_trigger_statement += item
+
+                    insert_trigger_statement += "\r\nEND"
+
+                    # Remove multiple spaces
+                    insert_trigger_statement = re.sub(r' +', ' ', insert_trigger_statement)
+
+                    # print(update_trigger_statement)
+                    triggers['INSERT'] = {}
+                    triggers['INSERT']['trigger_name'] = '%s_insert_audit_trigger' % (str(table_name))
+                    triggers['INSERT']['statement'] = insert_trigger_statement
+
+                if len(delete_statement_part_list) > 0:
+
+                    delete_trigger_statement = "BEGIN\r\n\t"
+
+                    for item in delete_statement_part_list:
+
+                        delete_trigger_statement += item
+
+                    delete_trigger_statement += "\r\nEND"
+
+                    # Remove multiple spaces
+                    delete_trigger_statement = re.sub(r' +', ' ', delete_trigger_statement)
+
+                    # print(update_trigger_statement)
+                    triggers['DELETE'] = {}
+                    triggers['DELETE']['trigger_name'] = '%s_delete_audit_trigger' % (str(table_name))
+                    triggers['DELETE']['statement'] = delete_trigger_statement
+
+
+                if len(triggers) > 0:
+
+                    with self.engine.connect() as conn:
+
+                        exist_triggers_query = """
+                        SHOW TRIGGERS 
+                        FROM `%s` 
+                        WHERE `Table`='%s';
+                        """ % (
+                            str(self.__dbName), 
+                            str(table_name)
+                            )
+                        
+                        exist_triggers = conn.execute(text(exist_triggers_query)).fetchall()
+                        
+                        for dml_type, value in triggers.items():
+                            # dml_type: UPDATE, INSERT, DELETE
+
+                            triggers[dml_type]['exist'] = False
+
+                            for trigger in exist_triggers:
+
+                                if trigger[0] == value['trigger_name']:
+
+                                    if trigger[1] != dml_type or trigger[2] != table_name or repr(trigger[3]) != repr(value['statement']):
+
+                                        reason = ""
+
+                                        if trigger[1] != dml_type:
+                                            if len(reason) > 0:
+                                                reason += ", "
+
+                                            reason += "Dml type not match (actual: %s, required: %s)" % (str(trigger[1]), str(dml_type))
+                                        
+                                        if trigger[2] != table_name:
+                                            if len(reason) > 0:
+                                                reason += ", "
+
+                                            reason += "Table name not match (actual: %s, required: %s)" % (str(trigger[1]), str(table_name))
+
+                                        # print(repr(trigger[3]))
+                                        # print(repr(value['statement']))
+                                        if repr(trigger[3]) != repr(value['statement']):
+                                            if len(reason) > 0:
+                                                reason += ", "
+
+                                            reason += "Statement not match"
+
+                                        self.log.critical("'%s' database -> '%s' table -> Drop '%s' trigger! Reason: %s" % (
+                                            str(self.__dbName),
+                                            str(table_name),
+                                            str(value['trigger_name']),
+                                            str(reason)
+                                            ))
+
+                                        drop_trigger_query = "DROP TRIGGER IF EXISTS %s;" % (str(value['trigger_name']))
+                                        
+                                        with self.engine.connect() as conn:
+                                            conn.execute(text(drop_trigger_query))
+
+                                    else:
+
+                                        triggers[dml_type]['exist'] = True
+
+                        for dml_type, value in triggers.items():
+
+                            if value['exist'] == False:
+
+                                self.log.warning("'%s' database -> '%s' table -> Create '%s' trigger!" % (
+                                    str(self.__dbName),
+                                    str(table_name),
+                                    str(value['trigger_name']),
+                                    ))
+
+                                create_trigger_query = f"""
+                                CREATE TRIGGER {value['trigger_name']}
+                                AFTER {dml_type} ON `{table_name}` 
+                                FOR EACH ROW 
+                                {value['statement']}
+                                """
+                                
+                                with self.engine.connect() as conn:
+                                    conn.execute(text(create_trigger_query))
+
+            else:
+
+                self.log.critical("'%s' database -> '%s' table -> Audit log was not created because the autoincrement primary key could not be found." % (
+                    str(self.__dbName),
+                    str(table_name),
+                    ))
             
     def mysqlVersionCheck(self, minMysqlVersion):
 
@@ -849,7 +1214,7 @@ class MySQLDatabase(LoggerMixin):
         )
         
         self.log.info("Sync engine connected...")
-    
+
         self.setupTables()
         
         self.checkMysqlExist()

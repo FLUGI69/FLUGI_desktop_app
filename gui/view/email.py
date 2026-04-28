@@ -27,7 +27,7 @@ from PyQt6.QtGui import QIcon, QFont, QMovie
 from config import Config
 from db import queries
 from utils.logger import LoggerMixin
-from utils.dc.gmail_response_data import EmailHeaders, Message
+from utils.dc.google.gmail_response_data import EmailHeaders, Message
 from view.modal.email_modal import EmailModal
 from view.modal.new_email import NewEmailModal
 from utils.handlers.email_content import EmailContentHandler

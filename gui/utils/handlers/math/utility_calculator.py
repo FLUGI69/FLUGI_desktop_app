@@ -57,14 +57,14 @@ class UtilityCalculator(LoggerMixin):
             The second numeric value.
         operation : str, optional
             The arithmetic operation to perform. Supported values:
-            - "add"      → addition (a + b)
-            - "subtract" → subtraction (a - b)
-            - "multiply" → multiplication (a * b)
-            - "divide"   → division (a / b)
+            - "add"      -> addition (a + b)
+            - "subtract" -> subtraction (a - b)
+            - "multiply" -> multiplication (a * b)
+            - "divide"   -> division (a / b)
             Defaults to "add".
         decimal_places : int, optional
             Number of decimal places to round the result to.
-            Example: 2 → 0.00, 4 → 0.0000
+            Example: 2 -> 0.00, 4 -> 0.0000
             Defaults to 4.
 
         Returns

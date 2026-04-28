@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 import logging
 import re
+import typing as t
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
@@ -10,6 +11,20 @@ from async_loop.qt_app import QtApplication
 from launcher import Launcher
 from utils.logger import LoggerMixin
 from config.config import Config
+
+
+if t.TYPE_CHECKING:
+    from services.admin.calendar_reminder_cache import CalendarReminderCacheService
+    from services.admin.fleet_cache import FleetCacheService
+    from services.admin.rental_history_cache import RentalHistoryCacheService
+    from services.admin.storage_dropdown_cache import StorageCacheService
+    from services.admin.storage_datatable_cache import AdminStorageItemsCacheService
+    from services.admin.tenant_datatable_cache import AdminTenantsCacheService
+    from services.material_datatable_cache import MaterialCacheService
+    from services.devices_datatable_cache import DevicesCacheService
+    from services.tools_datatable_cache import ToolsCacheService
+    from services.returnable_packaging_cache import ReturnablePackagingCacheService
+
 
 class Interfaces(LoggerMixin):
     
@@ -23,11 +38,56 @@ class Interfaces(LoggerMixin):
         await launcher.run()
             
     @staticmethod
-    async def __after_shutdown(qt_app: QtApplication):
+    async def __before_shutdown(qt_app: QtApplication):
         
-        if hasattr(qt_app, "redis_client"):
+        if qt_app.redis_client is not None:
             
-            await qt_app.redis_client.close()
+            cache_services: t.List[t.Optional[
+                CalendarReminderCacheService | FleetCacheService | 
+                RentalHistoryCacheService | StorageCacheService | 
+                AdminStorageItemsCacheService | AdminTenantsCacheService | 
+                MaterialCacheService | DevicesCacheService | ToolsCacheService | ReturnablePackagingCacheService]] = [
+                
+                qt_app.reminder_cache_service,
+                qt_app.fleet_cache_service,
+                qt_app.rental_history_cache_service,
+                qt_app.storage_cache_service,
+                qt_app.storage_items_cache_service,
+                qt_app.tenant_cache_service,
+                qt_app.material_cache_service,
+                qt_app.devices_cache_service,
+                qt_app.tools_cache_service,
+                qt_app.returnable_packaging_cache_service
+            ]
+            
+            for service in cache_services:
+                
+                if service is not None:
+                    
+                    try:
+                       
+                        if getattr(service, "_lock_token", None) is not None:
+                                
+                            await service.redis_client.release_execution_lock(
+                                lock_key = service._lock_key(),
+                                token = service._lock_token
+                            )
+                            
+                            if service.__should_start_waiting == True:
+                                service.__should_start_waiting = False
+
+                            if service._lock_token is not None:
+                                service._lock_token = None
+                            
+                            if service._execution_locked == True:
+                                service._execution_locked = False
+                                
+                            if service._wake_event.is_set() == False:
+                                service._wake_event.set()
+                   
+                    except Exception as e:
+                      
+                        qt_app.log.exception("Exception while shutting down cache service: %s" % str(e))
 
     @staticmethod
     async def __after_startup(qt_app: QtApplication) -> None:
@@ -152,6 +212,6 @@ class Interfaces(LoggerMixin):
         
         qt_app.register_after_startup(cls.__after_startup)
         
-        qt_app.register_before_shutdown(cls.__after_shutdown)
+        qt_app.register_before_shutdown(cls.__before_shutdown)
         
         qt_app.run()

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import asyncio
 import traceback
 import logging
+import typing as t
 
 from config import Config
 from utils.logger import LoggerMixin
@@ -11,6 +12,9 @@ from services.admin.rental_history_cache import RentalHistoryCacheService
 from db.async_redis import AsyncRedisClient
 from utils.handlers.math import UtilityCalculator
 
+if t.TYPE_CHECKING:
+    from async_loop import QtApplication
+    
 class RentalWorker(QObject, LoggerMixin):
     
     log: logging.Logger
@@ -20,6 +24,7 @@ class RentalWorker(QObject, LoggerMixin):
     finished = pyqtSignal()
 
     def __init__(self, 
+        app: 'QtApplication',
         redis_client: AsyncRedisClient, 
         rental_lock: asyncio.Lock,
         utility_calculator: UtilityCalculator,
@@ -40,10 +45,17 @@ class RentalWorker(QObject, LoggerMixin):
         
         self.interval = interval_ms / 1000
         
-        self.rental_history_cache = RentalHistoryCacheService(
-            redis_client = redis_client,
-            rental_lock = rental_lock
-        )
+        if app.rental_history_cache_service is None:
+            
+            self.rental_history_cache = RentalHistoryCacheService(
+                redis_client = redis_client,
+                rental_lock = rental_lock
+            )
+            app.rental_history_cache_service = self.rental_history_cache
+        
+        else:
+           
+            self.rental_history_cache = app.rental_history_cache_service
         
         self.rental_history_cache_data = None
         
